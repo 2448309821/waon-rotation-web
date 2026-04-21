@@ -587,3 +587,83 @@ th { background: #f8fafc; font-weight: 600; white-space: nowrap; }
   .session-grid { grid-template-columns: 1fr; }
   .chip { font-size: 13px; padding: 8px 10px; }
 }
+
+.hero-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+.identity-badge-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+}
+.identity-badge {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.identity-badge-admin { background: rgba(250, 204, 21, 0.2); }
+.hero-switch-btn,
+.export-btn,
+.identity-card {
+  border: 0;
+  cursor: pointer;
+}
+.hero-switch-btn {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.identity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.identity-card {
+  text-align: left;
+  padding: 18px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.identity-card strong { font-size: 16px; }
+.identity-card span { color: #6b7280; font-size: 13px; }
+.identity-card-admin {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+.export-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+.export-btn {
+  background: #1f4d4a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.export-message {
+  color: #6b7280;
+  font-size: 12px;
+}
+.admin-note {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+}
+.class-chip-disabled {
+  opacity: 0.55;
+  cursor: default;
+}
