@@ -155,26 +155,33 @@ function seededRandom(seed) {
 
 function tryAssign(available, classes, classRules, allTeachers, meeting, random, seed) {
   if (available.length < classes.length) return null
-  const rng = random ? seededRandom(seed) : null
-  const sorted = random
-    ? [...available].sort(() => rng() - 0.5)
-    : [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
-  let best = null, bestScore = null
+  if (!random) {
+    const sorted = [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
+    let best = null, bestScore = null
+    for (const chosen of combinations(sorted, classes.length)) {
+      for (const ordered of permute(chosen)) {
+        const assignment = Object.fromEntries(classes.map((cls, i) => [cls, ordered[i].name]))
+        if (!classes.every(cls => classRules[cls]?.has(assignment[cls]))) continue
+        const score = scoreAssignment(chosen, allTeachers, meeting)
+        if (!bestScore || compareScore(bestScore, score) < 0) { best = assignment; bestScore = score }
+      }
+    }
+    return best
+  }
 
+  const rng = seededRandom(seed)
+  const validAssignments = []
+  const sorted = [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
   for (const chosen of combinations(sorted, classes.length)) {
-    const orderSource = random
-      ? [...chosen].sort(() => rng() - 0.5)
-      : permute(chosen)
-    const orderedList = random ? [orderSource] : orderSource
-    for (const ordered of orderedList) {
+    for (const ordered of permute(chosen)) {
       const assignment = Object.fromEntries(classes.map((cls, i) => [cls, ordered[i].name]))
       if (!classes.every(cls => classRules[cls]?.has(assignment[cls]))) continue
-      const score = random ? [rng()] : scoreAssignment(chosen, allTeachers, meeting)
-      if (!bestScore || compareScore(bestScore, score) < 0) { best = assignment; bestScore = score }
-      if (random) break
+      validAssignments.push(assignment)
     }
   }
-  return best
+  if (validAssignments.length === 0) return null
+  const pick = Math.floor(rng() * validAssignments.length)
+  return validAssignments[pick]
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
