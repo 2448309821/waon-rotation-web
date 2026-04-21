@@ -10,8 +10,36 @@ import {
   sessionTypeOptions,
 } from './schedule'
 
-const STORAGE_KEY = 'rotation-web-state-v5'
+const STORAGE_KEY = 'rotation-web-state-v6'
 const MONTH_JP = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+const SEEDED_MONTH_KEY = '2026-5'
+const SEEDED_SESSION_TYPES = {
+  [SEEDED_MONTH_KEY]: {
+    '5/2': 'holiday',
+    '5/9': 'meeting',
+  },
+}
+const SEEDED_ATTENDANCE = {
+  [SEEDED_MONTH_KEY]: {
+    '岡本': { '5/9': 'meeting_only', '5/16': 'yes', '5/23': 'yes', '5/30': 'maybe' },
+    '柴田': { '5/9': 'meeting_only', '5/16': 'yes', '5/23': 'yes', '5/30': 'yes' },
+    '今村': { '5/9': 'maybe', '5/16': 'no', '5/23': 'yes', '5/30': 'yes' },
+    '門馬': {},
+    '蔦尾': { '5/9': 'yes', '5/16': 'yes', '5/23': 'yes', '5/30': 'no' },
+    '岡崎': { '5/9': 'yes', '5/16': 'yes', '5/23': 'yes', '5/30': 'no' },
+    '相良': { '5/9': 'no', '5/16': 'yes', '5/23': 'no', '5/30': 'yes' },
+    '裴': { '5/9': 'yes' },
+  },
+}
+const SEEDED_MEMOS = {
+  [SEEDED_MONTH_KEY]: {
+    '5/2': 'わをん休み',
+    '5/9': '総会。岡本さんと柴田さんは総会のみ。裴さんを追加。今村さんは△。',
+    '5/16': '王さん参加週。人数に余裕があれば入門を2クラスに分ける。',
+    '5/23': '王さんは不参加。',
+    '5/30': '王さん参加週。人数が足りなければ入門は1クラス。岡本さんは△。',
+  },
+}
 
 function getDefaultYearMonth() {
   const d = new Date()
@@ -20,43 +48,47 @@ function getDefaultYearMonth() {
   return { year, month }
 }
 
-function loadState() {
-  const { year, month } = getDefaultYearMonth()
-  const fallback = {
-    year, month,
+function buildFallbackState() {
+  return {
+    year: 2026,
+    month: 5,
     allClasses: ALL_CLASSES,
     defaultClasses: DEFAULT_CLASSES,
     statusOptions: DEFAULT_STATUS_OPTIONS,
     specialRules: { wangSplit: true },
     teachers: DEFAULT_TEACHERS,
     currentTeacher: DEFAULT_TEACHERS[0].name,
-    sessionTypesByMonth: {},
+    sessionTypesByMonth: SEEDED_SESSION_TYPES,
     sessionClassesByMonth: {},
-    attendanceByMonth: {},
-    memosByMonth: {},
+    attendanceByMonth: SEEDED_ATTENDANCE,
+    memosByMonth: SEEDED_MEMOS,
   }
+}
+
+function loadState() {
+  const fallback = buildFallbackState()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return fallback
     const p = JSON.parse(raw)
     return {
-      year:                  p.year                 ?? year,
-      month:                 p.month                ?? month,
-      allClasses:            p.allClasses           ?? ALL_CLASSES,
-      defaultClasses:        p.defaultClasses       ?? DEFAULT_CLASSES,
-      statusOptions:         p.statusOptions        ?? DEFAULT_STATUS_OPTIONS,
-      specialRules:          p.specialRules         ?? { wangSplit: true },
-      teachers:              p.teachers             ?? DEFAULT_TEACHERS,
-      currentTeacher:        p.currentTeacher       ?? fallback.currentTeacher,
-      sessionTypesByMonth:   p.sessionTypesByMonth  ?? {},
+      year: p.year ?? fallback.year,
+      month: p.month ?? fallback.month,
+      allClasses: p.allClasses ?? ALL_CLASSES,
+      defaultClasses: p.defaultClasses ?? DEFAULT_CLASSES,
+      statusOptions: p.statusOptions ?? DEFAULT_STATUS_OPTIONS,
+      specialRules: p.specialRules ?? { wangSplit: true },
+      teachers: p.teachers ?? DEFAULT_TEACHERS,
+      currentTeacher: p.currentTeacher ?? fallback.currentTeacher,
+      sessionTypesByMonth: { ...SEEDED_SESSION_TYPES, ...(p.sessionTypesByMonth ?? {}) },
       sessionClassesByMonth: p.sessionClassesByMonth ?? {},
-      attendanceByMonth:     p.attendanceByMonth    ?? {},
-      memosByMonth:          p.memosByMonth         ?? {},
+      attendanceByMonth: { ...SEEDED_ATTENDANCE, ...(p.attendanceByMonth ?? {}) },
+      memosByMonth: { ...SEEDED_MEMOS, ...(p.memosByMonth ?? {}) },
     }
   } catch { return fallback }
 }
 
-// ── Chip component ────────────────────────────────────────────────────────────
+// ?? Chip component ????????????????????????????????????????????????????????????
 function ClassChip({ label, checked, onChange }) {
   return (
     <label className={`class-chip ${checked ? 'class-chip-on' : ''}`}>
