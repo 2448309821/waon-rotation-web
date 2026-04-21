@@ -22,6 +22,30 @@ button, input, select, textarea { font: inherit; }
 .hero h1 { margin: 0 0 6px; font-size: clamp(17px, 4vw, 24px); }
 .lead    { max-width: 640px; margin: 0; opacity: .88; font-size: 14px; }
 
+.cloud-status {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.cloud-status strong {
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.cloud-status span {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cloud-status-connecting { background: rgba(255, 255, 255, 0.14); }
+.cloud-status-saving { background: rgba(250, 204, 21, 0.22); }
+.cloud-status-ready { background: rgba(34, 197, 94, 0.2); }
+.cloud-status-error { background: rgba(239, 68, 68, 0.22); }
+
 /* ── Panel ────────────────────────────────────────────────────────────────── */
 .panel {
   background: #fff;

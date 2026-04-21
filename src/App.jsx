@@ -9,6 +9,7 @@ import {
   generateSessions,
   sessionTypeOptions,
 } from './schedule'
+import { ROTATION_STATE_ID, supabase } from './supabase'
 
 const STORAGE_KEY = 'rotation-web-state-v6'
 const MONTH_JP = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
@@ -65,27 +66,33 @@ function buildFallbackState() {
   }
 }
 
-function loadState() {
+function mergeState(saved) {
   const fallback = buildFallbackState()
+  if (!saved) return fallback
+  return {
+    year: saved.year ?? fallback.year,
+    month: saved.month ?? fallback.month,
+    allClasses: saved.allClasses ?? ALL_CLASSES,
+    defaultClasses: saved.defaultClasses ?? DEFAULT_CLASSES,
+    statusOptions: saved.statusOptions ?? DEFAULT_STATUS_OPTIONS,
+    specialRules: saved.specialRules ?? { wangSplit: true },
+    teachers: saved.teachers ?? DEFAULT_TEACHERS,
+    currentTeacher: saved.currentTeacher ?? fallback.currentTeacher,
+    sessionTypesByMonth: { ...SEEDED_SESSION_TYPES, ...(saved.sessionTypesByMonth ?? {}) },
+    sessionClassesByMonth: saved.sessionClassesByMonth ?? {},
+    attendanceByMonth: { ...SEEDED_ATTENDANCE, ...(saved.attendanceByMonth ?? {}) },
+    memosByMonth: { ...SEEDED_MEMOS, ...(saved.memosByMonth ?? {}) },
+  }
+}
+
+function loadLocalState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return fallback
-    const p = JSON.parse(raw)
-    return {
-      year: p.year ?? fallback.year,
-      month: p.month ?? fallback.month,
-      allClasses: p.allClasses ?? ALL_CLASSES,
-      defaultClasses: p.defaultClasses ?? DEFAULT_CLASSES,
-      statusOptions: p.statusOptions ?? DEFAULT_STATUS_OPTIONS,
-      specialRules: p.specialRules ?? { wangSplit: true },
-      teachers: p.teachers ?? DEFAULT_TEACHERS,
-      currentTeacher: p.currentTeacher ?? fallback.currentTeacher,
-      sessionTypesByMonth: { ...SEEDED_SESSION_TYPES, ...(p.sessionTypesByMonth ?? {}) },
-      sessionClassesByMonth: p.sessionClassesByMonth ?? {},
-      attendanceByMonth: { ...SEEDED_ATTENDANCE, ...(p.attendanceByMonth ?? {}) },
-      memosByMonth: { ...SEEDED_MEMOS, ...(p.memosByMonth ?? {}) },
-    }
-  } catch { return fallback }
+    if (!raw) return buildFallbackState()
+    return mergeState(JSON.parse(raw))
+  } catch {
+    return buildFallbackState()
+  }
 }
 
 // ?? Chip component ????????????????????????????????????????????????????????????
@@ -100,7 +107,9 @@ function ClassChip({ label, checked, onChange }) {
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [state, setState]               = useState(loadState)
+  const [state, setState]               = useState(loadLocalState)
+  const [cloudStatus, setCloudStatus]     = useState('connecting')
+  const [cloudMessage, setCloudMessage]   = useState('Connecting to Supabase...')
   const [sessionOpen, setSessionOpen]   = useState(true)
   const [specialOpen, setSpecialOpen]   = useState(false)
   const [teacherOpen, setTeacherOpen]   = useState(false)
@@ -108,6 +117,8 @@ export default function App() {
   const newTeacherRef = useRef(null)
   const newClassRef   = useRef(null)
   const newStatusRef  = useRef(null)
+  const cloudReadyRef = useRef(false)
+  const saveTimerRef  = useRef(null)
 
   const {
     year, month, allClasses, defaultClasses, statusOptions, specialRules,
@@ -126,6 +137,80 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  }, [state])
+
+  useEffect(() => {
+    let alive = true
+
+    async function loadRemoteState() {
+      setCloudStatus('connecting')
+      setCloudMessage('Loading shared data from Supabase...')
+
+      const { data, error } = await supabase
+        .from('rotation_states')
+        .select('state, updated_at')
+        .eq('id', ROTATION_STATE_ID)
+        .maybeSingle()
+
+      if (!alive) return
+
+      if (error) {
+        console.error(error)
+        setCloudStatus('error')
+        setCloudMessage('Supabase load failed. Check README and schema setup.')
+        return
+      }
+
+      if (data?.state) {
+        setState(mergeState(data.state))
+        setCloudStatus('ready')
+        setCloudMessage('Shared data loaded. Other devices will see the same data.')
+      } else {
+        setCloudStatus('ready')
+        setCloudMessage('Shared storage is empty. Your next change will create it.')
+      }
+
+      cloudReadyRef.current = true
+    }
+
+    loadRemoteState()
+
+    return () => {
+      alive = false
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!cloudReadyRef.current) return
+
+    setCloudStatus('saving')
+    setCloudMessage('Saving to Supabase...')
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(async () => {
+      const payload = {
+        id: ROTATION_STATE_ID,
+        state,
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabase.from('rotation_states').upsert(payload)
+
+      if (error) {
+        console.error(error)
+        setCloudStatus('error')
+        setCloudMessage('Supabase save failed.')
+        return
+      }
+
+      setCloudStatus('ready')
+      setCloudMessage('Saved to Supabase. Other devices are synced.')
+    }, 800)
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
   }, [state])
 
   // ── Month ────────────────────────────────────────────────────────────────
@@ -328,6 +413,10 @@ export default function App() {
         <p className="eyebrow">Waon Rotation</p>
         <h1>出席を入れると自動で担当を決めるサイト</h1>
         <p className="lead">月を選んで各回のタイプを設定し、出欠を入力してください。保存は自動です。</p>
+        <div className={`cloud-status cloud-status-${cloudStatus}`}>
+          <strong>Cloud Sync</strong>
+          <span>{cloudMessage}</span>
+        </div>
       </section>
 
       {/* ── 0. 月を選ぶ ──────────────────────────────────────────────────── */}

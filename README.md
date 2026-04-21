@@ -1,25 +1,33 @@
 # Rotation Web
 
-React 版のローテーション入力サイトです。
+React + Supabase shared rotation planner.
 
-## 起動
+## Start
 
 ```bash
 npm install
 npm run dev
 ```
 
-ブラウザで表示された URL を開くと、名前ごとに `○ / △ / × / 総会のみ` を入れられます。
+## Supabase setup
 
-## できること
+1. Open Supabase SQL Editor
+2. Run `supabase/schema.sql`
+3. The app uses `src/supabase.js` for the project URL and anon key
 
-- 名前を選んで自分の出席を入力
-- 入力内容をブラウザの `localStorage` に自動保存
-- 5月の各回について自動で担当を決定
-- `△` は人数不足のときだけ採用
-- 王さん参加週は人数が足りれば入門を2クラスに分割
+## Shared storage
 
-## 注意
+- Data is stored in the `rotation_states` table
+- The current app uses one shared row: `id = 'shared'`
+- Changes made on one device are saved to Supabase
+- Other devices load the same shared data
+- A local browser cache is still kept as a fallback
 
-- 今の実装は `localStorage` 保存なので、同じブラウザ・同じ端末の中で使う前提です。
-- 複数人が別々の端末から同じデータを共有するには、あとでバックエンドが必要です。
+## Current features
+
+- Generate Saturday sessions for each month
+- Mark each session as normal, meeting, or holiday
+- Configure teachers, classes, and attendance statuses
+- Auto-build the rotation table
+- Save notes for each session
+- Sync shared data through Supabase
