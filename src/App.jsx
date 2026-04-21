@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { buildSchedule, sessions, statusOptions, teacherOrder } from './schedule'
 
 const STORAGE_KEY = 'rotation-web-state-v1'
