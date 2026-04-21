@@ -1,0 +1,15 @@
+{
+  "date": "2026-05-09",
+  "week_index": 2,
+  "meeting": true,
+  "attendance": {
+    "okamoto": "meeting_only",
+    "Okazaki": "yes",
+    "emi": "yes",
+    "imamura": "maybe",
+    "seityan": "meeting_only",
+    "yuko": "no",
+    "pei": "yes",
+    "門馬": "no"
+  }
+}
