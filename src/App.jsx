@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { buildSchedule, sessions, statusOptions, teacherOrder } from './schedule'
 
 const STORAGE_KEY = 'rotation-web-state-v1'
@@ -17,6 +17,7 @@ function loadState() {
     currentTeacher: teacherOrder[0],
     attendance: createEmptyAttendance(),
   }
+  if (typeof window === 'undefined' || !window.localStorage) return fallback
   const raw = localStorage.getItem(STORAGE_KEY)
   if (!raw) return fallback
   try {
@@ -31,14 +32,40 @@ function loadState() {
 }
 
 export default function App() {
-  const [state, setState] = useState(() => loadState())
-  const [nameInput, setNameInput] = useState(state.currentTeacher)
+  const [state, setState] = useState(() => ({
+    currentTeacher: teacherOrder[0],
+    attendance: createEmptyAttendance(),
+  }))
+  const [nameInput, setNameInput] = useState(teacherOrder[0])
+  const [pageError, setPageError] = useState('')
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    try {
+      const loaded = loadState()
+      setState(loaded)
+      setNameInput(loaded.currentTeacher)
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'データの読み込みに失敗しました。')
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      }
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : '保存に失敗しました。')
+    }
   }, [state])
 
-  const schedule = useMemo(() => buildSchedule(state.attendance), [state.attendance])
+  let schedule = []
+  try {
+    schedule = buildSchedule(state.attendance)
+  } catch (error) {
+    schedule = []
+    console.error(error)
+  }
 
   function handleSelectTeacher(name) {
     if (!teacherOrder.includes(name)) return
@@ -72,6 +99,13 @@ export default function App() {
           </p>
         </div>
       </section>
+
+      {pageError ? (
+        <section className="panel error-panel">
+          <strong>エラー</strong>
+          <p>{pageError}</p>
+        </section>
+      ) : null}
 
       <section className="panel">
         <div className="panel-header">
