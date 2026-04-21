@@ -146,18 +146,24 @@ function combinations(vals, k, start = 0, prefix = [], results = []) {
   return results
 }
 
-function tryAssign(available, classes, classRules, allTeachers, meeting) {
+function tryAssign(available, classes, classRules, allTeachers, meeting, random) {
   if (available.length < classes.length) return null
-  const sorted = [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
+  const sorted = random
+    ? [...available].sort(() => Math.random() - 0.5)
+    : [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
   let best = null, bestScore = null
 
   for (const chosen of combinations(sorted, classes.length)) {
-    for (const ordered of permute(chosen)) {
+    const orderSource = random
+      ? [...chosen].sort(() => Math.random() - 0.5)
+      : permute(chosen)
+    const orderedList = random ? [orderSource] : orderSource
+    for (const ordered of orderedList) {
       const assignment = Object.fromEntries(classes.map((cls, i) => [cls, ordered[i].name]))
       if (!classes.every(cls => classRules[cls]?.has(assignment[cls]))) continue
-      const score = scoreAssignment(chosen, allTeachers, meeting)
+      const score = random ? [Math.random()] : scoreAssignment(chosen, allTeachers, meeting)
       if (!bestScore || compareScore(bestScore, score) < 0) { best = assignment; bestScore = score }
-      break
+      if (random) break
     }
   }
   return best
@@ -165,10 +171,11 @@ function tryAssign(available, classes, classRules, allTeachers, meeting) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOptions) {
+export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOptions, specialRules = {}) {
   const classRules = buildClassRules(teachers)
   // Map status id → behavior; unknown ids treated as 'no'
   const behaviorOf = Object.fromEntries(statusOptions.map(o => [o.id, o.behavior]))
+  const random = specialRules.random === true
 
   return sessions.map(session => {
     if (session.closed) {
@@ -192,7 +199,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     const meetingOnlyTeachers = teachers.filter(t => behaviorOf[getStatus(t)] === 'meeting_only')
 
     let selectedMaybeTeachers = []
-    let assignments = tryAssign(yesTeachers, requiredClasses, classRules, teachers, session.meeting)
+    let assignments = tryAssign(yesTeachers, requiredClasses, classRules, teachers, session.meeting, random)
 
     if (!assignments) {
       const sortedMaybe = [...maybeTeachers].sort((a, b) => comparePriority(a, b, teachers, session.meeting))
@@ -200,7 +207,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
         selectedMaybeTeachers = [...selectedMaybeTeachers, t]
         assignments = tryAssign(
           [...yesTeachers, ...selectedMaybeTeachers],
-          requiredClasses, classRules, teachers, session.meeting,
+          requiredClasses, classRules, teachers, session.meeting, random,
         )
         if (assignments) break
       }
@@ -214,10 +221,10 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       const pool = [...yesTeachers, ...selectedMaybeTeachers]
       usedClasses = []
       for (const cls of requiredClasses) {
-        if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting))
+        if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random))
           usedClasses.push(cls)
       }
-      assignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting) ?? {}
+      assignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random) ?? {}
       unassignedClasses = requiredClasses.filter(c => !usedClasses.includes(c))
       if (unassignedClasses.length > 0)
         notes.push(`人数不足のため未定: ${unassignedClasses.join('、')}`)
