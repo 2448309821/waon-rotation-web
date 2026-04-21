@@ -29,7 +29,7 @@ export const BEHAVIORS = [
 ]
 
 export const sessionTypeOptions = [
-  { value: 'normal',  label: '正常' },
+  { value: 'normal',  label: '通常' },
   { value: 'meeting', label: '総会' },
   { value: 'holiday', label: 'やすみ' },
 ]
