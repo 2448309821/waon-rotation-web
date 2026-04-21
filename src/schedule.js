@@ -30,7 +30,7 @@ export const BEHAVIORS = [
 
 export const sessionTypeOptions = [
   { value: 'normal',  label: '通常' },
-  { value: 'meeting', label: '総会' },
+  { value: 'meeting', label: '例会' },
   { value: 'holiday', label: 'やすみ' },
 ]
 
@@ -74,7 +74,7 @@ export function generateSessions(year, month, sessionTypesByMonth, sessionClasse
 
   return getSaturdaysInMonth(year, month).map((date, index) => {
     const key       = `${month}/${date.getDate()}`
-    const type      = typeMap[key] ?? 'normal'
+    const type      = typeMap[key] ?? (month === 4 ? 'meeting' : 'normal')
     const weekIndex = index + 1
     return {
       key,
