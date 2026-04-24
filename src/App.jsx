@@ -60,13 +60,8 @@ function buildFallbackState() {
     currentTeacher: DEFAULT_TEACHERS[0].name,
     sessionTypesByMonth: SEEDED_SESSION_TYPES,
     sessionClassesByMonth: {},
+sessionManualByMonth: {},
     attendanceByMonth: SEEDED_ATTENDANCE,
-    memosByMonth: SEEDED_MEMOS,
-    lockedMonths: {},
-    archivedSchedules: {},
-    meetingNotesByMonth: {},
-    myMemosByTeacher: {},
-    bulletinBoard: [],
   }
 }
 
@@ -88,6 +83,7 @@ function mergeState(saved) {
     currentTeacher: saved.currentTeacher ?? fallback.currentTeacher,
     sessionTypesByMonth: { ...SEEDED_SESSION_TYPES, ...(saved.sessionTypesByMonth ?? {}) },
     sessionClassesByMonth: saved.sessionClassesByMonth ?? {},
+    sessionManualByMonth: saved.sessionManualByMonth ?? {},
     attendanceByMonth: { ...SEEDED_ATTENDANCE, ...(saved.attendanceByMonth ?? {}) },
     memosByMonth: { ...SEEDED_MEMOS, ...(saved.memosByMonth ?? {}) },
     lockedMonths: saved.lockedMonths ?? {},
