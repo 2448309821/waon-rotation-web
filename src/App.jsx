@@ -138,6 +138,7 @@ function buildHtmlExport(year, month, teachers, sessions, schedule) {
   const rows = []
   rows.push('<html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-size:14px}td,th{border:1px solid #000;padding:6px 10px;text-align:center}th{background:#f3f4f6}</style></head><body>')
   rows.push(`<h1>${year}年${month}月 担当表</h1>`)
+  rows.push('<p>☆　当番は当てませんので、当日の担当者が協力して教室の準備をお願いします。</p>')
   rows.push('<table>')
   rows.push('<tr><th></th>' + sessions.map((s) => `<th>${s.label}</th>`).join('') + '</tr>')
   rows.push('<tr><td>区分</td>' + schedule.map((s) => `<td>${s.closed ? '休み' : s.meeting ? '例会' : '通常'}</td>`).join('') + '</tr>')
@@ -148,8 +149,7 @@ function buildHtmlExport(year, month, teachers, sessions, schedule) {
     })
     rows.push(`<tr><td><b>${teacher.name}</b></td>${row.join('')}</tr>`)
   }
-  rows.push('</table>')
-  rows.push('<p>☆　当番は決めませんので、当日の担当者が協力して教室の準備をお願いします。</p>')
+rows.push('</table>')
   rows.push('<p>＊事務業務はその日の担当者が助け合って行い、最後に全員で確認してください。</p>')
   rows.push('</body></html>')
   return rows.join('\n')
