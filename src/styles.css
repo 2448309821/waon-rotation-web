@@ -249,6 +249,7 @@ button, input, select, textarea { font: inherit; }
 .export-btn:active { transform: scale(.97); }
 
 .export-btn-line     { background: var(--color-green-line); }
+.export-btn-html    { background: #4f46e5; }
 .export-btn-finalize { background: var(--color-amber); }
 .export-btn-locked   { background: #94a3b8; cursor: default; }
 .export-btn-locked:hover { opacity: 1; }
