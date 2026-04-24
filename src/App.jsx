@@ -1027,15 +1027,15 @@ export default function App() {
         { id: 'sec-teachers',   label: '先生' },
         { id: 'sec-attendance', label: '出席' },
         { id: 'sec-schedule',   label: '担当' },
-        { id: 'sec-memos',      label: 'メモ' },
         { id: 'sec-bulletin',   label: '伝言' },
+        { id: 'sec-memos',      label: 'メモ' },
         { id: 'sec-archive',    label: '保存' },
       ]
     : [
         { id: 'sec-attendance', label: '出席' },
         { id: 'sec-schedule',   label: '担当' },
-        { id: 'sec-memos',      label: 'メモ' },
         { id: 'sec-bulletin',   label: '伝言' },
+        { id: 'sec-memos',      label: 'メモ' },
       ]
 
   // IntersectionObserver for scroll nav active state — must be before conditional return
