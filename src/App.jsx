@@ -61,6 +61,7 @@ function buildFallbackState() {
     sessionTypesByMonth: SEEDED_SESSION_TYPES,
     sessionClassesByMonth: {},
     sessionManualByMonth: {},
+    sessionSpecialNotesByMonth: {},
     attendanceByMonth: SEEDED_ATTENDANCE,
   }
 }
@@ -84,6 +85,7 @@ function mergeState(saved) {
     sessionTypesByMonth: { ...SEEDED_SESSION_TYPES, ...(saved.sessionTypesByMonth ?? {}) },
     sessionClassesByMonth: saved.sessionClassesByMonth ?? {},
     sessionManualByMonth: saved.sessionManualByMonth ?? {},
+    sessionSpecialNotesByMonth: saved.sessionSpecialNotesByMonth ?? {},
     attendanceByMonth: { ...SEEDED_ATTENDANCE, ...(saved.attendanceByMonth ?? {}) },
     memosByMonth: { ...SEEDED_MEMOS, ...(saved.memosByMonth ?? {}) },
     lockedMonths: saved.lockedMonths ?? {},
@@ -142,6 +144,7 @@ function buildHtmlExport(year, month, teachers, sessions, schedule) {
   rows.push('<table>')
   rows.push('<tr><th></th>' + sessions.map((s) => `<th>${s.label}</th>`).join('') + '</tr>')
   rows.push('<tr><td>区分</td>' + schedule.map((s) => `<td>${s.closed ? '休み' : s.meeting ? '例会' : '通常'}</td>`).join('') + '</tr>')
+  rows.push('<tr><td>特別連絡</td>' + schedule.map((s) => `<td>${s.special || ''}</td>`).join('') + '</tr>')
   for (const teacher of teachers) {
     const row = schedule.map((s) => {
       const classes = Object.entries(s.assignments || {}).filter(([, t]) => t === teacher.name).map(([cls]) => cls).join('<br>')
@@ -306,6 +309,7 @@ export default function App() {
     sessionTypesByMonth,
     sessionClassesByMonth,
     sessionManualByMonth,
+    sessionSpecialNotesByMonth,
     attendanceByMonth,
     memosByMonth,
     lockedMonths,
@@ -316,7 +320,7 @@ export default function App() {
   } = state
 
   const monthKey = `${year}-${month}`
-  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, defaultClasses, allClasses, specialRules)
+  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, sessionSpecialNotesByMonth, defaultClasses, allClasses, specialRules)
   const attendance = attendanceByMonth[monthKey] ?? {}
   const memos = memosByMonth[monthKey] ?? {}
   const meetingNotes = meetingNotesByMonth[monthKey] ?? {}
@@ -697,6 +701,21 @@ export default function App() {
       }
       return { ...s, sessionManualByMonth: { ...s.sessionManualByMonth, [monthKey]: byMonth } }
     })
+  }
+
+  function getSessionSpecialNote(sessionKey) {
+    return sessionSpecialNotesByMonth[monthKey]?.[sessionKey] ?? ''
+  }
+
+  function setSessionSpecialNote(sessionKey, note) {
+    if (!canEditAdmin) return
+    setState((s) => ({
+      ...s,
+      sessionSpecialNotesByMonth: {
+        ...s.sessionSpecialNotesByMonth,
+        [monthKey]: { ...(s.sessionSpecialNotesByMonth[monthKey] ?? {}), [sessionKey]: note },
+      },
+    }))
   }
 
   function setSpecialRule(key, value) {
@@ -1115,7 +1134,7 @@ export default function App() {
       {isAdmin && <section className="panel admin-note"><p>管理者モードでは、月設定・各回設定・先生設定・メモ編集・エクスポートができます。</p></section>}
 
       {/* ── Session settings (admin) ── */}
-      {isAdmin && <section id="sec-sessions" className="panel"><button type="button" className="collapse-header" onClick={() => setSessionOpen((o) => !o)} aria-expanded={sessionOpen}><span>1. 各回の設定</span><span className="collapse-icon">{sessionOpen ? '▲' : '▼'}</span></button>{!sessionOpen ? <p className="collapse-hint">{sessions.length === 0 ? 'この月に土曜日がありません' : sessions.map((s) => { const type = sessionTypesByMonth[monthKey]?.[s.key] ?? 'normal'; const icon = type === 'holiday' ? 'やすみ' : type === 'meeting' ? '例会' : '通常'; return `${s.label}(${icon})` }).join(' · ')}</p> : sessions.length === 0 ? <p className="empty-msg">この月に土曜日がありません。</p> : <div className="session-list">{sessions.map((session, i) => { const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'; const classes = getSessionClasses(session); const isOverridden = !!sessionClassesByMonth[monthKey]?.[session.key]; const isWangWeek = session.weekIndex % 2 === 1; return <div key={session.key} className={`session-row session-row-${type}`}><div className="session-row-top"><div className="session-date-info"><strong className="session-date">{session.label}</strong><span className="session-week">{session.closed ? 'やすみ' : `${i + 1}週目${isWangWeek ? '（王週）' : ''}`}</span></div><select className="session-type-select" value={type} onChange={(e) => setSessionType(session.key, e.target.value)} disabled={!canEditAdmin}>{sessionTypeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>{!session.closed && <div className="session-class-area"><div className="session-class-header"><span className="session-class-label">開講クラス</span>{isOverridden && canEditAdmin && <button type="button" className="reset-btn" onClick={() => resetSessionClasses(session.key)}>自動に戻す</button>}</div><div className="session-class-chips">{allClasses.map((cls) => <div key={cls} className="session-class-chip-row"><ClassChip key={cls} label={cls} checked={classes.includes(cls)} onChange={(e) => toggleSessionClass(session, cls, e.target.checked)} disabled={!canEditAdmin} /><select className="manual-teacher-select" value={getManualAssignment(session, cls) ?? ''} onChange={(e) => e.target.value ? setManualAssignment(session.key, cls, e.target.value) : resetManualAssignment(session.key, cls)} disabled={!canEditAdmin}>{<option value="">auto</option>}{teachers.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}</select>{getManualAssignment(session, cls) && <button type="button" className="icon-btn" onClick={() => resetManualAssignment(session.key, cls)} title="解除">×</button>}</div>)}</div></div>}</div> })}</div>}</section>}
+      {isAdmin && <section id="sec-sessions" className="panel"><button type="button" className="collapse-header" onClick={() => setSessionOpen((o) => !o)} aria-expanded={sessionOpen}><span>1. 各回の設定</span><span className="collapse-icon">{sessionOpen ? '▲' : '▼'}</span></button>{!sessionOpen ? <p className="collapse-hint">{sessions.length === 0 ? 'この月に土曜日がありません' : sessions.map((s) => { const type = sessionTypesByMonth[monthKey]?.[s.key] ?? 'normal'; const icon = type === 'holiday' ? 'やすみ' : type === 'meeting' ? '例会' : '通常'; return `${s.label}(${icon})` }).join(' · ')}</p> : sessions.length === 0 ? <p className="empty-msg">この月に土曜日がありません。</p> : <div className="session-list">{sessions.map((session, i) => { const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'; const classes = getSessionClasses(session); const isOverridden = !!sessionClassesByMonth[monthKey]?.[session.key]; const isWangWeek = session.weekIndex % 2 === 1; return <div key={session.key} className={`session-row session-row-${type}`}><div className="session-row-top"><div className="session-date-info"><strong className="session-date">{session.label}</strong><span className="session-week">{session.closed ? 'やすみ' : `${i + 1}週目${isWangWeek ? '（王週）' : ''}`}</span></div><select className="session-type-select" value={type} onChange={(e) => setSessionType(session.key, e.target.value)} disabled={!canEditAdmin}>{sessionTypeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>{!session.closed && <div className="session-special-note-row"><span className="session-special-note-label">特別連絡：</span><input className="session-special-note-input" value={session.specialNote || ''} placeholder="特別連絡を入力..." onChange={(e) => setSessionSpecialNote(session.key, e.target.value)} disabled={!canEditAdmin} /></div>}{!session.closed && <div className="session-class-area"><div className="session-class-header"><span className="session-class-label">開講クラス</span>{isOverridden && canEditAdmin && <button type="button" className="reset-btn" onClick={() => resetSessionClasses(session.key)}>自動に戻す</button>}</div><div className="session-class-chips">{allClasses.map((cls) => <div key={cls} className="session-class-chip-row"><ClassChip key={cls} label={cls} checked={classes.includes(cls)} onChange={(e) => toggleSessionClass(session, cls, e.target.checked)} disabled={!canEditAdmin} /><select className="manual-teacher-select" value={getManualAssignment(session, cls) ?? ''} onChange={(e) => e.target.value ? setManualAssignment(session.key, cls, e.target.value) : resetManualAssignment(session.key, cls)} disabled={!canEditAdmin}>{<option value="">auto</option>}{teachers.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}</select>{getManualAssignment(session, cls) && <button type="button" className="icon-btn" onClick={() => resetManualAssignment(session.key, cls)} title="解除">×</button>}</div>)}</div></div>}</div> })}</div>}</section>}
 
       {/* ── Special rules (admin) ── */}
       {isAdmin && <section id="sec-special" className="panel"><button type="button" className="collapse-header" onClick={() => setSpecialOpen((o) => !o)} aria-expanded={specialOpen}><span>2. 特殊設定</span><span className="collapse-icon">{specialOpen ? '▲' : '▼'}</span></button>{!specialOpen ? <p className="collapse-hint">王さん: {specialRules.wangSplit !== false ? 'ON' : 'OFF'} · ランダム: {specialRules.random === true ? 'ON' : 'OFF'}</p> : <div className="special-rules-list"><div className="special-rule-row"><div className="special-rule-info"><strong>王さんルール（入門自動分割）</strong><p>奇数週に「入門(denji)」と「入門(王)」が両方存在するとき、デフォルトで入門を2クラスに分けます。</p></div><label className="toggle-label"><input type="checkbox" checked={specialRules.wangSplit !== false} onChange={(e) => setSpecialRule('wangSplit', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span><span className="toggle-text">{specialRules.wangSplit !== false ? 'ON' : 'OFF'}</span></label></div><div className="special-rule-row"><div className="special-rule-info"><strong>ランダム配車</strong><p>複数の先生が同じクラスを担当できる場合、ランダムに先生を選びます。</p></div><label className="toggle-label"><input type="checkbox" checked={specialRules.random === true} onChange={(e) => setSpecialRule('random', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span><span className="toggle-text">{specialRules.random === true ? 'ON' : 'OFF'}</span></label></div></div>}</section>}
