@@ -347,6 +347,10 @@ button, input, select, textarea { font: inherit; }
   min-height: 38px;
   font-size: calc(13px * var(--font-scale));
   flex-shrink: 0;
+}
+.session-special-note-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.session-special-note-label { font-size: calc(11px * var(--font-scale)); color: var(--text-muted); font-weight: 700; }
+.session-special-note-input { flex: 1; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: calc(12px * var(--font-scale)); background: var(--bg-input); }
   cursor: pointer;
 }
 

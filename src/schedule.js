@@ -66,12 +66,13 @@ function smartDefault(weekIndex, defaultClasses, allClasses, wangSplit) {
   return [...defaultClasses]
 }
 
-export function generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth = {}, defaultClasses, allClasses, specialRules = {}) {
+export function generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth = {}, sessionSpecialNotesByMonth = {}, defaultClasses, allClasses, specialRules = {}) {
   const { wangSplit = true } = specialRules
   const monthKey = `${year}-${month}`
   const typeMap  = sessionTypesByMonth[monthKey] ?? {}
   const classMap = sessionClassesByMonth[monthKey] ?? {}
   const manualMap = sessionManualByMonth[monthKey] ?? {}
+  const specialNotesMap = sessionSpecialNotesByMonth[monthKey] ?? {}
 
   return getSaturdaysInMonth(year, month).map((date, index) => {
     const key       = `${month}/${date.getDate()}`
@@ -86,6 +87,7 @@ export function generateSessions(year, month, sessionTypesByMonth, sessionClasse
       requiredClasses: classMap[key] ?? smartDefault(weekIndex, defaultClasses, allClasses, wangSplit),
       classesOverridden: !!classMap[key],
       manualAssignments: manualMap[key] ?? {},
+      specialNote: specialNotesMap[key] ?? '',
     }
   })
 }
@@ -263,7 +265,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       (a, b) => teacherNames.indexOf(a) - teacherNames.indexOf(b)
     )
 
-    let special = session.meeting ? '会議' : ''
+    let special = session.specialNote ? session.specialNote : (session.meeting ? '会議' : '')
     if (session.meeting && selectedMaybeTeachers.length > 0)
       special = `会議。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加`
     if (Object.keys(manualAssignments).length > 0)
