@@ -66,11 +66,12 @@ function smartDefault(weekIndex, defaultClasses, allClasses, wangSplit) {
   return [...defaultClasses]
 }
 
-export function generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, defaultClasses, allClasses, specialRules = {}) {
+export function generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth = {}, defaultClasses, allClasses, specialRules = {}) {
   const { wangSplit = true } = specialRules
   const monthKey = `${year}-${month}`
   const typeMap  = sessionTypesByMonth[monthKey] ?? {}
   const classMap = sessionClassesByMonth[monthKey] ?? {}
+  const manualMap = sessionManualByMonth[monthKey] ?? {}
 
   return getSaturdaysInMonth(year, month).map((date, index) => {
     const key       = `${month}/${date.getDate()}`
@@ -84,6 +85,7 @@ export function generateSessions(year, month, sessionTypesByMonth, sessionClasse
       closed:  type === 'holiday',
       requiredClasses: classMap[key] ?? smartDefault(weekIndex, defaultClasses, allClasses, wangSplit),
       classesOverridden: !!classMap[key],
+      manualAssignments: manualMap[key] ?? {},
     }
   })
 }
@@ -204,7 +206,13 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       }
     }
 
+    const manualAssignments = session.manualAssignments ?? {}
     const requiredClasses = session.requiredClasses ?? []
+
+    // Apply manual assignments first
+    let assignments = { ...manualAssignments }
+    const manuallyAssignedClasses = Object.keys(manualAssignments)
+    const remainingClasses = requiredClasses.filter(c => !manuallyAssignedClasses.includes(c))
 
     // Resolve each teacher's effective status for this session
     const getStatus = t =>
@@ -215,33 +223,37 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     const meetingOnlyTeachers = teachers.filter(t => behaviorOf[getStatus(t)] === 'meeting_only')
 
     let selectedMaybeTeachers = []
-    let assignments = tryAssign(yesTeachers, requiredClasses, classRules, teachers, session.meeting, random, seed)
+    let autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, seed) : {}
 
-    if (!assignments) {
+    if (!autoAssignments) {
       const sortedMaybe = [...maybeTeachers].sort((a, b) => comparePriority(a, b, teachers, session.meeting))
       for (const t of sortedMaybe) {
         selectedMaybeTeachers = [...selectedMaybeTeachers, t]
-        assignments = tryAssign(
+        autoAssignments = remainingClasses.length > 0 ? tryAssign(
           [...yesTeachers, ...selectedMaybeTeachers],
-          requiredClasses, classRules, teachers, session.meeting, random, seed,
-        )
-        if (assignments) break
+          remainingClasses, classRules, teachers, session.meeting, random, seed,
+        ) : {}
+        if (autoAssignments) break
       }
     }
+
+    // Merge manual and auto assignments
+    assignments = { ...assignments, ...autoAssignments }
 
     let usedClasses = [...requiredClasses]
     let unassignedClasses = []
     const notes = []
 
-    if (!assignments) {
+    if (!autoAssignments && remainingClasses.length > 0) {
       const pool = [...yesTeachers, ...selectedMaybeTeachers]
       usedClasses = []
-      for (const cls of requiredClasses) {
+      for (const cls of remainingClasses) {
         if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, seed))
           usedClasses.push(cls)
       }
-      assignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, seed) ?? {}
-      unassignedClasses = requiredClasses.filter(c => !usedClasses.includes(c))
+      autoAssignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, seed) ?? {}
+      assignments = { ...assignments, ...autoAssignments }
+      unassignedClasses = remainingClasses.filter(c => !usedClasses.includes(c))
       if (unassignedClasses.length > 0)
         notes.push(`人数不足のため未定: ${unassignedClasses.join('、')}`)
     }
@@ -254,6 +266,8 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     let special = session.meeting ? '会議' : ''
     if (session.meeting && selectedMaybeTeachers.length > 0)
       special = `会議。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加`
+    if (Object.keys(manualAssignments).length > 0)
+      notes.push('手動設定あり')
     if (!session.meeting && session.classesOverridden && requiredClasses.some(c => c.includes('王')))
       notes.push('入門分割週（手動設定）')
 
