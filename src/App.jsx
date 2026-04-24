@@ -189,25 +189,30 @@ function buildLineText(year, month, schedule, memos) {
   return lines.join('\n').trim()
 }
 
-function ScrollNav({ sections, activeSection }) {
+function ScrollNav({ sections, activeSection, navOpen, onToggle }) {
   function scrollTo(id) {
     const el = document.getElementById(id)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
   return (
-    <nav className="scroll-nav" aria-label="セクションナビ">
-      {sections.map((s) => (
-        <button
-          key={s.id}
-          type="button"
-          className={`scroll-nav-item ${activeSection === s.id ? 'scroll-nav-item-active' : ''}`}
-          onClick={() => scrollTo(s.id)}
-          title={s.label}
-        >
-          {s.label}
-        </button>
-      ))}
-    </nav>
+    <>
+      <button type="button" className={`scroll-nav-toggle ${navOpen ? 'scroll-nav-toggle-open' : ''}`} onClick={() => onToggle?.()} aria-expanded={navOpen} aria-controls="scroll-nav-panel">
+        {navOpen ? '目次を閉じる' : '目次'}
+      </button>
+      <nav id="scroll-nav-panel" className={`scroll-nav ${navOpen ? 'scroll-nav-open' : ''}`} aria-label="セクションナビ">
+        {sections.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={`scroll-nav-item ${activeSection === s.id ? 'scroll-nav-item-active' : ''}`}
+            onClick={() => { scrollTo(s.id); onToggle?.(false) }}
+            title={s.label}
+          >
+            {s.label}
+          </button>
+        ))}
+      </nav>
+    </>
   )
 }
 
@@ -255,6 +260,7 @@ export default function App() {
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [copiedLink, setCopiedLink] = useState('')
   const [activeSection, setActiveSection] = useState('')
+  const [navOpen, setNavOpen] = useState(false)
   const [showNewBulletin, setShowNewBulletin] = useState(false)
   const [newBulletinText, setNewBulletinText] = useState('')
   const [editingBulletinId, setEditingBulletinId] = useState(null)
@@ -768,6 +774,7 @@ export default function App() {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
       author: identity,
       message: msg,
+      confirmedBy: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -827,6 +834,20 @@ export default function App() {
         }),
       }
     })
+  }
+
+  function toggleConfirmBulletin(id) {
+    if (!identity) return
+    setState((s) => ({
+      ...s,
+      bulletinBoard: (Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []).map((p) => {
+        if (p.id !== id) return p
+        const confirmedBy = Array.isArray(p.confirmedBy) ? p.confirmedBy : []
+        return confirmedBy.includes(identity)
+          ? { ...p, confirmedBy: confirmedBy.filter((name) => name !== identity) }
+          : { ...p, confirmedBy: [...confirmedBy, identity] }
+      }),
+    }))
   }
 
   function moveBulletin(id, dir) {
@@ -1263,6 +1284,8 @@ export default function App() {
               const isEditing = editingBulletinId === post.id
               const isPinned = !!post.pinned
               const isImportant = !!post.important
+              const confirmedBy = Array.isArray(post.confirmedBy) ? post.confirmedBy : []
+              const isConfirmed = confirmedBy.includes(identity)
               const canMarkImportant = isAdmin || identity === post.author
               const tier = sortedBulletin.filter((p) => !!p.pinned === isPinned)
               const tierPos = tier.findIndex((p) => p.id === post.id)
@@ -1301,6 +1324,11 @@ export default function App() {
                         <button type="button" className="bulletin-move-btn" disabled={tierPos === tier.length - 1} onClick={() => moveBulletin(post.id, 1)} title="下へ">↓</button>
                       </div>
                       {!isEditing && (
+                        <button type="button" className={`bulletin-confirm-btn ${isConfirmed ? 'active' : ''}`} onClick={() => toggleConfirmBulletin(post.id)} title={isConfirmed ? '確認を取り消す' : '確認した'}>
+                          {isConfirmed ? `確認済 ${confirmedBy.length}` : `確認 ${confirmedBy.length}`}
+                        </button>
+                      )}
+                      {!isEditing && (
                         <button type="button" className={`bulletin-important-btn ${isImportant ? 'active' : ''}`} onClick={() => toggleImportantBulletin(post.id)} title={isImportant ? '重要解除' : '重要にする'}>⭐</button>
                       )}
                       {!isEditing && (
@@ -1330,7 +1358,13 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    <p className="bulletin-post-body">{post.message}</p>
+                    <>
+                      <p className="bulletin-post-body">{post.message}</p>
+                      <div className="bulletin-confirmed-row">
+                        <span className="bulletin-confirmed-label">確認済み</span>
+                        <span className="bulletin-confirmed-names">{confirmedBy.length > 0 ? confirmedBy.join('、') : 'まだありません'}</span>
+                      </div>
+                    </>
                   )}
                 </div>
               )
@@ -1379,7 +1413,7 @@ export default function App() {
       )}
 
       {/* ── Scroll nav ── */}
-      <ScrollNav sections={navSections} activeSection={activeSection} />
+      <ScrollNav sections={navSections} activeSection={activeSection} navOpen={navOpen} onToggle={(next) => setNavOpen((prev) => typeof next === 'boolean' ? next : !prev)} />
     </div>
   )
 }
