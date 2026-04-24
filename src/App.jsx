@@ -134,6 +134,31 @@ function ClassChip({ label, checked, onChange, disabled = false }) {
   )
 }
 
+function buildHtmlExport(year, month, teachers, sessions, schedule, memos) {
+  const rows = []
+  rows.push('<html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-size:14px}td,th{border:1px solid #000;padding:4px 8px;text-align:center}</style></head><body>')
+  rows.push(`<h1>${year}年${month}月 担当表</h1>`)
+  rows.push('<table>')
+  rows.push('<tr><th></th>' + sessions.map((s) => `<th>${s.label}</th>`).join('') + '</tr>')
+  rows.push('<tr><td>特別連絡</td>' + schedule.map((s) => `<td>${s.special || ''}</td>`).join('') + '</tr>')
+  if (schedule.some((s) => s.unassignedClasses?.length > 0)) {
+    rows.push('<tr><td>未担当</td>' + schedule.map((s) => `<td>${(s.unassignedClasses || []).join('、')}</td>`).join('') + '</tr>')
+  }
+  for (const teacher of teachers) {
+    const row = schedule.map((s) => Object.entries(s.assignments).filter(([, t]) => t === teacher.name).map(([cls]) => cls).join('<br>'))
+    rows.push(`<tr><td>${teacher.name}</td>${row.join('')}</tr>`)
+  }
+  rows.push('</table>')
+  rows.push('<h2>メモ</h2>')
+  rows.push('<ul>')
+  for (const session of sessions) {
+    if (memos[session.key]) rows.push(`<li><b>${session.label}:</b> ${memos[session.key]}</li>`)
+  }
+  rows.push('</ul>')
+  rows.push('</body></html>')
+  return rows.join('\n')
+}
+
 function buildMarkdownExport(year, month, teachers, sessions, schedule, memos) {
   const lines = []
   lines.push(`# ${year}年${month}月 担当表`)
@@ -545,6 +570,18 @@ export default function App() {
     }
 
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportHtmlTable() {
+    const html = buildHtmlExport(year, month, teachers, sessions, schedule, memos)
+    const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.html`
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -1059,6 +1096,7 @@ export default function App() {
             <div className="export-actions">
               <button type="button" className="export-btn export-btn-line" onClick={copyLineText}>📋 LINE用テキスト</button>
               <button type="button" className="export-btn" onClick={exportMonthTable}>月表を保存</button>
+              <button type="button" className="export-btn export-btn-html" onClick={exportHtmlTable}>💊 HTML表</button>
               <button
                 type="button"
                 className={`export-btn ${isMonthLocked ? 'export-btn-locked' : 'export-btn-finalize'}`}
