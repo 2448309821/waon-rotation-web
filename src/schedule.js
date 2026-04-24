@@ -265,9 +265,9 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       (a, b) => teacherNames.indexOf(a) - teacherNames.indexOf(b)
     )
 
-    let special = session.specialNote ? session.specialNote : (session.meeting ? '会議' : '')
+    let special = (session.specialNote && session.specialNote.trim()) ? session.specialNote : (session.meeting ? '会議' : '')
     if (session.meeting && selectedMaybeTeachers.length > 0)
-      special = session.specialNote ? `${session.specialNote}。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加` : `会議。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加`
+      special = (session.specialNote && session.specialNote.trim()) ? `${session.specialNote}。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加` : `会議。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加`
     if (Object.keys(manualAssignments).length > 0)
       notes.push('手動設定あり')
     if (!session.meeting && session.classesOverridden && requiredClasses.some(c => c.includes('王')))
