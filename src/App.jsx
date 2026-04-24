@@ -60,7 +60,7 @@ function buildFallbackState() {
     currentTeacher: DEFAULT_TEACHERS[0].name,
     sessionTypesByMonth: SEEDED_SESSION_TYPES,
     sessionClassesByMonth: {},
-sessionManualByMonth: {},
+    sessionManualByMonth: {},
     attendanceByMonth: SEEDED_ATTENDANCE,
   }
 }
@@ -284,6 +284,7 @@ export default function App() {
     currentTeacher,
     sessionTypesByMonth,
     sessionClassesByMonth,
+    sessionManualByMonth,
     attendanceByMonth,
     memosByMonth,
     lockedMonths,
@@ -294,7 +295,7 @@ export default function App() {
   } = state
 
   const monthKey = `${year}-${month}`
-  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, defaultClasses, allClasses, specialRules)
+  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, defaultClasses, allClasses, specialRules)
   const attendance = attendanceByMonth[monthKey] ?? {}
   const memos = memosByMonth[monthKey] ?? {}
   const meetingNotes = meetingNotesByMonth[monthKey] ?? {}
@@ -623,6 +624,45 @@ export default function App() {
       const byMonth = { ...(s.sessionClassesByMonth[monthKey] ?? {}) }
       delete byMonth[sessionKey]
       return { ...s, sessionClassesByMonth: { ...s.sessionClassesByMonth, [monthKey]: byMonth } }
+    })
+  }
+
+  function getManualAssignment(session, cls) {
+    return sessionManualByMonth[monthKey]?.[session.key]?.[cls]
+  }
+
+  function setManualAssignment(sessionKey, cls, teacher) {
+    if (!canEditAdmin) return
+    setState((s) => {
+      const existingByMonth = s.sessionManualByMonth[monthKey] ?? {}
+      const existingBySession = existingByMonth[sessionKey] ?? {}
+      return {
+        ...s,
+        sessionManualByMonth: {
+          ...s.sessionManualByMonth,
+          [monthKey]: {
+            ...existingByMonth,
+            [sessionKey]: { ...existingBySession, [cls]: teacher },
+          },
+        },
+      }
+    })
+  }
+
+  function resetManualAssignment(sessionKey, cls) {
+    if (!canEditAdmin) return
+    setState((s) => {
+      const byMonth = { ...(s.sessionManualByMonth[monthKey] ?? {}) }
+      const bySession = { ...(byMonth[sessionKey] ?? {}) }
+      if (cls) {
+        delete bySession[cls]
+      } else {
+        delete bySession[sessionKey]
+      }
+      if (Object.keys(bySession).length === 0) {
+        delete byMonth[sessionKey]
+      }
+      return { ...s, sessionManualByMonth: { ...s.sessionManualByMonth, [monthKey]: byMonth } }
     })
   }
 
