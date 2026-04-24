@@ -665,7 +665,6 @@ export default function App() {
   }
 
   function setMemo(sessionKey, value) {
-    if (!canEditAdmin) return
     setState((s) => ({
       ...s,
       memosByMonth: {
@@ -676,7 +675,6 @@ export default function App() {
   }
 
   function setMeetingNote(sessionKey, value) {
-    if (!canEditAdmin) return
     setState((s) => ({
       ...s,
       meetingNotesByMonth: {
@@ -770,13 +768,7 @@ export default function App() {
     })
   }
 
-  // ── Gate ──────────────────────────────────────────────────────────────────────
-  if (!identity || !teachers.some((t) => t.name === identity)) {
-    return <IdentityGate teachers={teachers} onSelect={selectIdentity} />
-  }
-
-  const archiveEntries = Object.entries(archivedSchedules ?? {}).sort(([a], [b]) => b.localeCompare(a))
-
+  // ── Nav sections (computed before gate so hook below can reference it) ────────
   const navSections = isAdmin
     ? [
         { id: 'sec-month',      label: '月' },
@@ -797,8 +789,9 @@ export default function App() {
         { id: 'sec-bulletin',   label: '伝言' },
       ]
 
-  // IntersectionObserver for scroll nav active state
+  // IntersectionObserver for scroll nav active state — must be before conditional return
   useEffect(() => {
+    if (!identity) return
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter((e) => e.isIntersecting)
@@ -812,6 +805,13 @@ export default function App() {
     })
     return () => observer.disconnect()
   }, [identity, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Gate ──────────────────────────────────────────────────────────────────────
+  if (!identity || !teachers.some((t) => t.name === identity)) {
+    return <IdentityGate teachers={teachers} onSelect={selectIdentity} />
+  }
+
+  const archiveEntries = Object.entries(archivedSchedules ?? {}).sort(([a], [b]) => b.localeCompare(a))
 
   return (
     <div className="page">
@@ -1000,7 +1000,7 @@ export default function App() {
         <div className="panel-header">
           <div>
             <h2>{isAdmin ? '7. メモ' : '3. メモ'}</h2>
-            <p>{isAdmin ? '管理者はメモを編集できます。' : 'メモは閲覧のみです。'}</p>
+            <p>全員がメモと会議記録を編集できます。</p>
           </div>
         </div>
 
@@ -1018,8 +1018,7 @@ export default function App() {
               className="meeting-note-textarea"
               value={meetingNotes[session.key] ?? ''}
               onChange={(e) => setMeetingNote(session.key, e.target.value)}
-              placeholder={canEditAdmin ? '会議内容を記録…（議事録・決定事項・次回への伝達事項など）' : '記録なし'}
-              readOnly={!canEditAdmin}
+              placeholder="会議内容を記録…（議事録・決定事項・次回への伝達事項など）"
               rows={8}
             />
           </div>
@@ -1047,9 +1046,8 @@ export default function App() {
                   className="memo-textarea"
                   value={memos[session.key] ?? ''}
                   onChange={(e) => setMemo(session.key, e.target.value)}
-                  placeholder={canEditAdmin ? '自由に書き込めます…' : ''}
+                  placeholder="自由に書き込めます…"
                   rows={3}
-                  readOnly={!canEditAdmin}
                 />
               </label>
             </article>
