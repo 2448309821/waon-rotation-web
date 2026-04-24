@@ -13,6 +13,10 @@ import { ROTATION_STATE_ID, supabase } from './supabase'
 
 const STORAGE_KEY = 'rotation-web-state-v7'
 const IDENTITY_KEY = 'rotation-web-identity-v1'
+const TEXT_SCALE_KEY = 'rotation-web-text-scale-v1'
+const DEFAULT_TEXT_SCALE_KEY = 'rotation-web-default-text-scale-v1'
+const MIN_TEXT_SCALE = 80
+const MAX_TEXT_SCALE = 200
 const ADMIN_NAME = '裴'
 const MONTH_JP = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
 const SEEDED_MONTH_KEY = '2026-5'
@@ -109,6 +113,19 @@ function loadIdentity() {
     return localStorage.getItem(IDENTITY_KEY) || ''
   } catch {
     return ''
+  }
+}
+
+function loadTextScale() {
+  try {
+    const saved = localStorage.getItem(DEFAULT_TEXT_SCALE_KEY) ?? localStorage.getItem(TEXT_SCALE_KEY)
+    const numeric = Number(saved)
+    if (Number.isFinite(numeric) && numeric > 0) return Math.min(MAX_TEXT_SCALE, Math.max(MIN_TEXT_SCALE, Math.round(numeric)))
+    if (saved === 'large') return 112
+    if (saved === 'xlarge') return 126
+    return 100
+  } catch {
+    return 100
   }
 }
 
@@ -226,6 +243,8 @@ function IdentityGate({ teachers, onSelect }) {
 export default function App() {
   const [state, setState] = useState(loadLocalState)
   const [identity, setIdentity] = useState(loadIdentity)
+  const [textScale, setTextScale] = useState(loadTextScale)
+  const [textScaleDraft, setTextScaleDraft] = useState(() => String(loadTextScale()))
   const [cloudStatus, setCloudStatus] = useState('connecting')
   const [cloudMessage, setCloudMessage] = useState('Connecting to Supabase...')
   const [exportMessage, setExportMessage] = useState('')
@@ -299,6 +318,38 @@ export default function App() {
     if (identity) localStorage.setItem(IDENTITY_KEY, identity)
     else localStorage.removeItem(IDENTITY_KEY)
   }, [identity])
+
+  useEffect(() => {
+    setTextScaleDraft(String(textScale))
+  }, [textScale])
+
+  function normalizeTextScale(value) {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return null
+    return Math.min(MAX_TEXT_SCALE, Math.max(MIN_TEXT_SCALE, Math.round(numeric)))
+  }
+
+  function applyTextScaleDraft() {
+    const normalized = normalizeTextScale(textScaleDraft)
+    if (normalized == null) {
+      setTextScaleDraft(String(textScale))
+      return
+    }
+    setTextScale(normalized)
+  }
+
+  function saveDefaultTextScale() {
+    const normalized = normalizeTextScale(textScaleDraft)
+    if (normalized == null) return
+    setTextScale(normalized)
+    setTextScaleDraft(String(normalized))
+    localStorage.setItem(DEFAULT_TEXT_SCALE_KEY, String(normalized))
+  }
+
+  function resetTextScale() {
+    setTextScale(100)
+    setTextScaleDraft('100')
+  }
 
   useEffect(() => {
     if (!identity || isAdmin) return
@@ -904,7 +955,7 @@ export default function App() {
   const sortedBulletin = [...bulletinBoard.filter((p) => p.pinned), ...bulletinBoard.filter((p) => !p.pinned)]
 
   return (
-    <div className="page">
+    <div className="page" style={{ '--font-scale': textScale / 100 }}>
       {/* ── Hero ── */}
       <section className="hero">
         <div className="hero-topline">
@@ -965,6 +1016,7 @@ export default function App() {
         <div className="month-nav">
           <div className="month-field"><label className="month-field-label">年</label><input type="number" className="year-input" value={year} min={2020} max={2040} onChange={(e) => { const v = parseInt(e.target.value, 10); if (v >= 2020 && v <= 2040) setYear(v) }} /></div>
           <div className="month-field"><label className="month-field-label">月</label><select className="month-select" value={month} onChange={(e) => setMonth(parseInt(e.target.value, 10))}>{MONTH_JP.map((label, i) => <option key={i + 1} value={i + 1}>{label}</option>)}</select></div>
+          <div className="month-field month-field-font-scale"><label className="month-field-label">文字サイズ</label><input type="number" className="font-scale-input" value={textScaleDraft} min={MIN_TEXT_SCALE} max={MAX_TEXT_SCALE} step={5} onChange={(e) => setTextScaleDraft(e.target.value)} onBlur={applyTextScaleDraft} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyTextScaleDraft(); e.currentTarget.blur() } }} /><span className="font-scale-unit">%</span><div className="font-scale-actions"><button type="button" className="font-scale-btn" onClick={applyTextScaleDraft}>適用</button><button type="button" className="font-scale-btn" onClick={resetTextScale}>100%に戻す</button><button type="button" className="font-scale-btn font-scale-btn-primary" onClick={saveDefaultTextScale}>既定に保存</button></div><span className="font-scale-help">安全範囲: {MIN_TEXT_SCALE}% - {MAX_TEXT_SCALE}%</span></div>
           <span className="month-display-text">{year}年 {MONTH_JP[month - 1]}</span>
         </div>
       </section>
