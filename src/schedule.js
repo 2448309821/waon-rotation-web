@@ -17,7 +17,7 @@ export const DEFAULT_STATUS_OPTIONS = [
   { id: 'yes',          label: '○',     behavior: 'yes' },
   { id: 'maybe',        label: '△',     behavior: 'maybe' },
   { id: 'no',           label: '×',     behavior: 'no' },
-  { id: 'meeting_only', label: '総会のみ', behavior: 'meeting_only' },
+  { id: 'meeting_only', label: '例会のみ', behavior: 'meeting_only' },
 ]
 
 // Behaviors used in scheduling logic
@@ -25,7 +25,7 @@ export const BEHAVIORS = [
   { value: 'yes',          label: '出席・担当あり (○ 相当)' },
   { value: 'maybe',        label: '人数不足なら担当 (△ 相当)' },
   { value: 'no',           label: '欠席 (× 相当)' },
-  { value: 'meeting_only', label: '総会のみ参加、担当なし' },
+  { value: 'meeting_only', label: '例会のみ参加、担当なし' },
 ]
 
 export const sessionTypeOptions = [
