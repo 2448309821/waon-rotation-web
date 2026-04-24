@@ -1086,6 +1086,38 @@ th  { background: var(--color-primary-pale); font-weight: 600; white-space: nowr
   word-break: break-word;
 }
 
+/* ── Drag and drop ──────────────────────────────────────────────────────────── */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: grab;
+  flex-shrink: 0;
+  user-select: none;
+  opacity: .5;
+  transition: opacity .12s;
+}
+.drag-handle:hover { opacity: 1; color: var(--color-primary); }
+.drag-handle:active { cursor: grabbing; }
+
+/* teacher card dragging */
+.teacher-card { cursor: default; transition: box-shadow .12s, opacity .12s; }
+.teacher-drag-over {
+  box-shadow: 0 -3px 0 0 var(--color-primary), 0 2px 12px rgba(29,78,216,.15) !important;
+  background: #eff6ff !important;
+}
+
+/* bulletin post dragging */
+.bulletin-post-draggable { cursor: grab; }
+.bulletin-post-draggable:active { cursor: grabbing; }
+.bulletin-drag-over {
+  box-shadow: 0 -3px 0 0 var(--color-primary), 0 2px 12px rgba(29,78,216,.15) !important;
+  background: #eff6ff !important;
+}
+
 /* ── Scroll nav ─────────────────────────────────────────────────────────────── */
 .scroll-nav {
   position: fixed;

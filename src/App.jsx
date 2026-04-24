@@ -234,6 +234,8 @@ export default function App() {
   const [newBulletinText, setNewBulletinText] = useState('')
   const [editingBulletinId, setEditingBulletinId] = useState(null)
   const [editingBulletinText, setEditingBulletinText] = useState('')
+  const [bulletinDragOverId, setBulletinDragOverId] = useState(null)
+  const [teacherDragOverIdx, setTeacherDragOverIdx] = useState(null)
   const newTeacherRef = useRef(null)
   const newClassRef = useRef(null)
   const newStatusRef = useRef(null)
@@ -241,6 +243,8 @@ export default function App() {
   const saveTimerRef = useRef(null)
   const lastSyncedStateRef = useRef('')
   const urlTeacherRef = useRef(null)
+  const bulletinDragRef = useRef(null)
+  const teacherDragRef = useRef(null)
 
   const {
     year,
@@ -756,19 +760,41 @@ export default function App() {
   function moveBulletin(id, dir) {
     if (!isAdmin) return
     setState((s) => {
-      const arr = [...(Array.isArray(s.bulletinBoard) ? s.bulletinBoard : [])]
-      const idx = arr.findIndex((p) => p.id === id)
+      const board = Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []
+      const sorted = [...board.filter((p) => p.pinned), ...board.filter((p) => !p.pinned)]
+      const idx = sorted.findIndex((p) => p.id === id)
       if (idx < 0) return s
-      const isPinned = !!arr[idx].pinned
-      const tierIdx = arr.map((p, i) => ({ i, pinned: !!p.pinned }))
-        .filter((x) => x.pinned === isPinned)
-        .map((x) => x.i)
-      const posInTier = tierIdx.indexOf(idx)
-      if (dir === -1 && posInTier === 0) return s
-      if (dir === 1 && posInTier === tierIdx.length - 1) return s
-      const swapIdx = tierIdx[posInTier + dir]
-      ;[arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]]
-      return { ...s, bulletinBoard: arr }
+      const swapIdx = idx + dir
+      if (swapIdx < 0 || swapIdx >= sorted.length) return s
+      if (!!sorted[idx].pinned !== !!sorted[swapIdx].pinned) return s
+      ;[sorted[idx], sorted[swapIdx]] = [sorted[swapIdx], sorted[idx]]
+      return { ...s, bulletinBoard: sorted }
+    })
+  }
+
+  function reorderBulletin(dragId, dropId) {
+    if (!isAdmin || dragId === dropId) return
+    setState((s) => {
+      const board = Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []
+      const sorted = [...board.filter((p) => p.pinned), ...board.filter((p) => !p.pinned)]
+      const fromIdx = sorted.findIndex((p) => p.id === dragId)
+      const toIdx   = sorted.findIndex((p) => p.id === dropId)
+      if (fromIdx < 0 || toIdx < 0) return s
+      if (!!sorted[fromIdx].pinned !== !!sorted[toIdx].pinned) return s
+      const next = [...sorted]
+      const [item] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, item)
+      return { ...s, bulletinBoard: next }
+    })
+  }
+
+  function reorderTeacher(fromIdx, toIdx) {
+    if (!canEditAdmin || fromIdx === toIdx) return
+    setState((s) => {
+      const arr = [...s.teachers]
+      const [item] = arr.splice(fromIdx, 1)
+      arr.splice(toIdx, 0, item)
+      return { ...s, teachers: arr }
     })
   }
 
@@ -855,6 +881,7 @@ export default function App() {
   }
 
   const archiveEntries = Object.entries(archivedSchedules ?? {}).sort(([a], [b]) => b.localeCompare(a))
+  const sortedBulletin = [...bulletinBoard.filter((p) => p.pinned), ...bulletinBoard.filter((p) => !p.pinned)]
 
   return (
     <div className="page">
@@ -934,7 +961,7 @@ export default function App() {
       {isAdmin && <section id="sec-settings" className="panel"><button type="button" className="collapse-header" onClick={() => setSettingsOpen((o) => !o)} aria-expanded={settingsOpen}><span>3. クラス・ステータスの設定</span><span className="collapse-icon">{settingsOpen ? '▲' : '▼'}</span></button>{!settingsOpen ? <p className="collapse-hint">クラス: {allClasses.join(' · ')} ／ ステータス: {statusOptions.map((o) => o.label).join(' · ')}</p> : <div className="settings-sections"><div className="settings-section"><h3 className="settings-section-title">クラス一覧</h3><p className="panel-desc">クラス名の追加・削除・リネームができます。</p><div className="settings-sub-label">デフォルト開講クラス</div><div className="class-chip-row">{allClasses.map((cls) => <ClassChip key={cls} label={cls} checked={defaultClasses.includes(cls)} onChange={(e) => toggleDefaultClass(cls, e.target.checked)} />)}</div><div className="settings-sub-label" style={{ marginTop: 14 }}>クラス名の編集</div><div className="edit-list">{allClasses.map((cls, idx) => <div key={idx} className="edit-row"><input className="edit-input" value={cls} ref={idx === allClasses.length - 1 ? newClassRef : null} onChange={(e) => renameGlobalClass(idx, e.target.value)} /><button type="button" className="icon-btn danger" onClick={() => deleteGlobalClass(idx)}>×</button></div>)}</div><button type="button" className="add-item-btn" style={{ marginTop: 10 }} onClick={addGlobalClass}>+ クラスを追加</button></div><div className="settings-divider" /><div className="settings-section"><h3 className="settings-section-title">出欠ステータス</h3><p className="panel-desc">ステータス表示名は増減できます。動作ルールは計算に使われます。</p><div className="status-edit-list">{statusOptions.map((opt, idx) => { const isBuiltIn = ['yes', 'maybe', 'no', 'meeting_only'].includes(opt.id); return <div key={opt.id} className="status-edit-row">{isBuiltIn ? <span className="status-label-fixed">{opt.label}</span> : <input className="edit-input status-label-input" value={opt.label} ref={idx === statusOptions.length - 1 ? newStatusRef : null} onChange={(e) => updateStatusOption(idx, 'label', e.target.value)} placeholder="表示名" />}<select className="status-behavior-select" value={opt.behavior} onChange={(e) => updateStatusOption(idx, 'behavior', e.target.value)} disabled={isBuiltIn}>{BEHAVIORS.map((behavior) => <option key={behavior.value} value={behavior.value}>{behavior.label}</option>)}</select>{!isBuiltIn && <button type="button" className="icon-btn danger" onClick={() => deleteStatusOption(idx)}>×</button>}</div> })}</div><button type="button" className="add-item-btn" style={{ marginTop: 10 }} onClick={addStatusOption}>+ ステータスを追加</button></div></div>}</section>}
 
       {/* ── Teacher settings (admin) ── */}
-      {isAdmin && <section id="sec-teachers" className="panel"><button type="button" className="collapse-header" onClick={() => setTeacherOpen((o) => !o)} aria-expanded={teacherOpen}><span>4. 先生の設定</span><span className="collapse-icon">{teacherOpen ? '▲' : '▼'}</span></button>{!teacherOpen ? <p className="collapse-hint">{teachers.map((t) => t.name).join(' · ')}</p> : <><p className="panel-desc">先生の追加・削除・担当クラス・デフォルト出欠を編集できます。</p><div className="teacher-list">{teachers.map((teacher, idx) => <div key={idx} className="teacher-card"><div className="teacher-card-header"><input className="teacher-name-input" value={teacher.name} ref={idx === teachers.length - 1 ? newTeacherRef : null} onChange={(e) => updateTeacher(idx, 'name', e.target.value)} /><div className="teacher-card-actions"><button type="button" className="icon-btn" disabled={idx === 0} onClick={() => moveTeacher(idx, -1)}>↑</button><button type="button" className="icon-btn" disabled={idx === teachers.length - 1} onClick={() => moveTeacher(idx, 1)}>↓</button><button type="button" className="icon-btn danger" onClick={() => deleteTeacher(idx)}>×</button></div></div><div className="teacher-meta-row"><label className="flag-label"><input type="checkbox" checked={!!teacher.remote} onChange={(e) => updateTeacher(idx, 'remote', e.target.checked)} /><span>遠方</span></label><label className="flag-label"><input type="checkbox" checked={!!teacher.skipMeeting} onChange={(e) => updateTeacher(idx, 'skipMeeting', e.target.checked)} /><span>総会のみ</span></label><label className="default-status-label"><span>デフォルト出欠</span><select className="default-status-select" value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)}>{statusOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select></label></div><div className="teacher-classes">{allClasses.map((cls) => <ClassChip key={cls} label={cls} checked={teacher.classes.includes(cls)} onChange={(e) => toggleTeacherClass(idx, cls, e.target.checked)} />)}</div></div>)}</div><button type="button" className="add-item-btn" onClick={addTeacher}>+ 先生を追加</button></>}</section>}
+      {isAdmin && <section id="sec-teachers" className="panel"><button type="button" className="collapse-header" onClick={() => setTeacherOpen((o) => !o)} aria-expanded={teacherOpen}><span>4. 先生の設定</span><span className="collapse-icon">{teacherOpen ? '▲' : '▼'}</span></button>{!teacherOpen ? <p className="collapse-hint">{teachers.map((t) => t.name).join(' · ')}</p> : <><p className="panel-desc">先生の追加・削除・担当クラス・デフォルト出欠を編集できます。</p><div className="teacher-list">{teachers.map((teacher, idx) => <div key={idx} draggable onDragStart={(e) => { teacherDragRef.current = idx; e.dataTransfer.effectAllowed = 'move' }} onDragOver={(e) => { e.preventDefault(); if (teacherDragRef.current !== idx) setTeacherDragOverIdx(idx) }} onDragLeave={() => setTeacherDragOverIdx(null)} onDrop={(e) => { e.preventDefault(); reorderTeacher(teacherDragRef.current, idx); setTeacherDragOverIdx(null) }} onDragEnd={() => { teacherDragRef.current = null; setTeacherDragOverIdx(null) }} className={`teacher-card${teacherDragOverIdx === idx && teacherDragRef.current !== idx ? ' teacher-drag-over' : ''}`}><div className="teacher-card-header"><span className="drag-handle" title="ドラッグして並び替え">⠿</span><input className="teacher-name-input" value={teacher.name} ref={idx === teachers.length - 1 ? newTeacherRef : null} onChange={(e) => updateTeacher(idx, 'name', e.target.value)} /><div className="teacher-card-actions"><button type="button" className="icon-btn" disabled={idx === 0} onClick={() => moveTeacher(idx, -1)}>↑</button><button type="button" className="icon-btn" disabled={idx === teachers.length - 1} onClick={() => moveTeacher(idx, 1)}>↓</button><button type="button" className="icon-btn danger" onClick={() => deleteTeacher(idx)}>×</button></div></div><div className="teacher-meta-row"><label className="flag-label"><input type="checkbox" checked={!!teacher.remote} onChange={(e) => updateTeacher(idx, 'remote', e.target.checked)} /><span>遠方</span></label><label className="flag-label"><input type="checkbox" checked={!!teacher.skipMeeting} onChange={(e) => updateTeacher(idx, 'skipMeeting', e.target.checked)} /><span>総会のみ</span></label><label className="default-status-label"><span>デフォルト出欠</span><select className="default-status-select" value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)}>{statusOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select></label></div><div className="teacher-classes">{allClasses.map((cls) => <ClassChip key={cls} label={cls} checked={teacher.classes.includes(cls)} onChange={(e) => toggleTeacherClass(idx, cls, e.target.checked)} />)}</div></div>)}</div><button type="button" className="add-item-btn" onClick={addTeacher}>+ 先生を追加</button></>}</section>}
 
       {/* ── Attendance input ── */}
       <section id="sec-attendance" className="panel">
@@ -1143,22 +1170,32 @@ export default function App() {
           </div>
         ) : (
           <div className="bulletin-list">
-            {[...bulletinBoard.filter((p) => p.pinned), ...bulletinBoard.filter((p) => !p.pinned)].map((post, _, sorted) => {
+            {sortedBulletin.map((post) => {
               const canEdit = isAdmin || identity === post.author
               const isEditing = editingBulletinId === post.id
               const isPinned = !!post.pinned
               const isImportant = !!post.important
               const canMarkImportant = isAdmin || identity === post.author
-              // Position within its tier for move buttons
-              const tier = sorted.filter((p) => !!p.pinned === isPinned)
+              const tier = sortedBulletin.filter((p) => !!p.pinned === isPinned)
               const tierPos = tier.findIndex((p) => p.id === post.id)
+              const isDragOver = bulletinDragOverId === post.id && bulletinDragRef.current !== post.id
               return (
-                <div key={post.id} className={[
-                  'bulletin-post',
-                  identity === post.author ? 'bulletin-post-own' : '',
-                  isPinned ? 'bulletin-post-pinned' : '',
-                  isImportant ? 'bulletin-post-important' : '',
-                ].filter(Boolean).join(' ')}>
+                <div
+                  key={post.id}
+                  draggable={isAdmin}
+                  onDragStart={(e) => { bulletinDragRef.current = post.id; e.dataTransfer.effectAllowed = 'move' }}
+                  onDragOver={(e) => { e.preventDefault(); if (bulletinDragRef.current !== post.id) setBulletinDragOverId(post.id) }}
+                  onDragLeave={() => setBulletinDragOverId(null)}
+                  onDrop={(e) => { e.preventDefault(); reorderBulletin(bulletinDragRef.current, post.id); setBulletinDragOverId(null) }}
+                  onDragEnd={() => { bulletinDragRef.current = null; setBulletinDragOverId(null) }}
+                  className={[
+                    'bulletin-post',
+                    identity === post.author ? 'bulletin-post-own' : '',
+                    isPinned ? 'bulletin-post-pinned' : '',
+                    isImportant ? 'bulletin-post-important' : '',
+                    isAdmin ? 'bulletin-post-draggable' : '',
+                    isDragOver ? 'bulletin-drag-over' : '',
+                  ].filter(Boolean).join(' ')}>
                   <div className="bulletin-post-header">
                     <div className="bulletin-post-meta">
                       <span className="bulletin-author-dot" />
