@@ -1007,6 +1007,76 @@ th  { background: var(--color-primary-pale); font-weight: 600; white-space: nowr
 }
 .bulletin-del-btn:hover { background: var(--color-red-light); }
 
+/* pin / important states */
+.bulletin-post-pinned {
+  border-color: #6366f1;
+  background: #f5f3ff;
+  box-shadow: 0 0 0 1px #c4b5fd inset;
+}
+.bulletin-post-important {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+.bulletin-post-pinned.bulletin-post-important {
+  border-color: #7c3aed;
+  background: #fefce8;
+}
+
+/* badges */
+.bulletin-badge-pin,
+.bulletin-badge-important {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 99px;
+  flex-shrink: 0;
+}
+.bulletin-badge-pin      { background: #ede9fe; color: #6d28d9; }
+.bulletin-badge-important { background: #fef3c7; color: #92400e; }
+
+/* move / pin / important action buttons */
+.bulletin-move-btns {
+  display: flex;
+  gap: 2px;
+}
+.bulletin-move-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+  padding: 0;
+}
+.bulletin-move-btn:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+.bulletin-move-btn:disabled { opacity: .3; cursor: default; }
+
+.bulletin-pin-btn,
+.bulletin-important-btn {
+  height: 26px;
+  padding: 0 8px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+  opacity: .5;
+}
+.bulletin-pin-btn:hover,
+.bulletin-important-btn:hover { opacity: 1; border-color: var(--border-strong); }
+.bulletin-pin-btn.active      { opacity: 1; border-color: #6366f1; background: #ede9fe; }
+.bulletin-important-btn.active { opacity: 1; border-color: #f59e0b; background: #fef3c7; }
+
 .bulletin-post-body {
   margin: 0;
   font-size: 14px;

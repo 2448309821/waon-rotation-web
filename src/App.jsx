@@ -729,6 +729,49 @@ export default function App() {
     }))
   }
 
+  function togglePinBulletin(id) {
+    if (!isAdmin) return
+    setState((s) => ({
+      ...s,
+      bulletinBoard: (Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []).map((p) =>
+        p.id === id ? { ...p, pinned: !p.pinned } : p
+      ),
+    }))
+  }
+
+  function toggleImportantBulletin(id) {
+    setState((s) => {
+      const board = Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []
+      return {
+        ...s,
+        bulletinBoard: board.map((p) => {
+          if (p.id !== id) return p
+          if (!isAdmin && identity !== p.author) return p
+          return { ...p, important: !p.important }
+        }),
+      }
+    })
+  }
+
+  function moveBulletin(id, dir) {
+    if (!isAdmin) return
+    setState((s) => {
+      const arr = [...(Array.isArray(s.bulletinBoard) ? s.bulletinBoard : [])]
+      const idx = arr.findIndex((p) => p.id === id)
+      if (idx < 0) return s
+      const isPinned = !!arr[idx].pinned
+      const tierIdx = arr.map((p, i) => ({ i, pinned: !!p.pinned }))
+        .filter((x) => x.pinned === isPinned)
+        .map((x) => x.i)
+      const posInTier = tierIdx.indexOf(idx)
+      if (dir === -1 && posInTier === 0) return s
+      if (dir === 1 && posInTier === tierIdx.length - 1) return s
+      const swapIdx = tierIdx[posInTier + dir]
+      ;[arr[idx], arr[swapIdx]] = [arr[swapIdx], arr[idx]]
+      return { ...s, bulletinBoard: arr }
+    })
+  }
+
   function updateTeacher(idx, field, value) {
     if (!canEditAdmin) return
     setState((s) => ({ ...s, teachers: s.teachers.map((t, i) => (i === idx ? { ...t, [field]: value } : t)) }))
@@ -1100,26 +1143,53 @@ export default function App() {
           </div>
         ) : (
           <div className="bulletin-list">
-            {bulletinBoard.map((post) => {
+            {[...bulletinBoard.filter((p) => p.pinned), ...bulletinBoard.filter((p) => !p.pinned)].map((post, _, sorted) => {
               const canEdit = isAdmin || identity === post.author
               const isEditing = editingBulletinId === post.id
+              const isPinned = !!post.pinned
+              const isImportant = !!post.important
+              const canMarkImportant = isAdmin || identity === post.author
+              // Position within its tier for move buttons
+              const tier = sorted.filter((p) => !!p.pinned === isPinned)
+              const tierPos = tier.findIndex((p) => p.id === post.id)
               return (
-                <div key={post.id} className={`bulletin-post ${identity === post.author ? 'bulletin-post-own' : ''}`}>
+                <div key={post.id} className={[
+                  'bulletin-post',
+                  identity === post.author ? 'bulletin-post-own' : '',
+                  isPinned ? 'bulletin-post-pinned' : '',
+                  isImportant ? 'bulletin-post-important' : '',
+                ].filter(Boolean).join(' ')}>
                   <div className="bulletin-post-header">
                     <div className="bulletin-post-meta">
                       <span className="bulletin-author-dot" />
                       <strong className="bulletin-post-author">{post.author}</strong>
+                      {isPinned && <span className="bulletin-badge-pin">📌 固定</span>}
+                      {isImportant && <span className="bulletin-badge-important">⭐ 重要</span>}
                       <span className="bulletin-post-date">
                         {new Date(post.updatedAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         {post.updatedAt !== post.createdAt && ' (編集済)'}
                       </span>
                     </div>
-                    {canEdit && !isEditing && (
-                      <div className="bulletin-post-btns">
-                        <button type="button" className="bulletin-edit-btn" onClick={() => startEditBulletin(post)}>編集</button>
-                        <button type="button" className="bulletin-del-btn" onClick={() => deleteBulletin(post.id)}>削除</button>
-                      </div>
-                    )}
+                    <div className="bulletin-post-btns">
+                      {isAdmin && (
+                        <div className="bulletin-move-btns">
+                          <button type="button" className="bulletin-move-btn" disabled={tierPos === 0} onClick={() => moveBulletin(post.id, -1)} title="上へ">↑</button>
+                          <button type="button" className="bulletin-move-btn" disabled={tierPos === tier.length - 1} onClick={() => moveBulletin(post.id, 1)} title="下へ">↓</button>
+                        </div>
+                      )}
+                      {canMarkImportant && !isEditing && (
+                        <button type="button" className={`bulletin-important-btn ${isImportant ? 'active' : ''}`} onClick={() => toggleImportantBulletin(post.id)} title={isImportant ? '重要解除' : '重要にする'}>⭐</button>
+                      )}
+                      {isAdmin && !isEditing && (
+                        <button type="button" className={`bulletin-pin-btn ${isPinned ? 'active' : ''}`} onClick={() => togglePinBulletin(post.id)} title={isPinned ? '固定解除' : '固定する'}>📌</button>
+                      )}
+                      {canEdit && !isEditing && (
+                        <>
+                          <button type="button" className="bulletin-edit-btn" onClick={() => startEditBulletin(post)}>編集</button>
+                          <button type="button" className="bulletin-del-btn" onClick={() => deleteBulletin(post.id)}>削除</button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {isEditing ? (
