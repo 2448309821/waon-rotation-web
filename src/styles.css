@@ -579,6 +579,58 @@ th  { background: var(--color-primary-pale); font-weight: 600; white-space: nowr
 .memo-textarea::placeholder { color: #cbd5e1; }
 .memo-textarea[readonly]    { background: #f8fafc; cursor: default; }
 
+.my-memo-card {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  padding: 16px;
+  margin-top: 8px;
+}
+
+.my-memo-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.my-memo-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.my-memo-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.my-memo-textarea {
+  resize: vertical;
+  width: 100%;
+  min-height: 180px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.my-memo-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(29,78,216,.1);
+}
+
+.my-memo-textarea::placeholder {
+  color: #cbd5e1;
+}
+
 /* ── Special rules ──────────────────────────────────────────────────────────── */
 .special-rules-list { display: flex; flex-direction: column; gap: 0; margin-top: 14px; }
 .special-rule-row {

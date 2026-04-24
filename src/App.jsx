@@ -61,6 +61,7 @@ function buildFallbackState() {
     lockedMonths: {},
     archivedSchedules: {},
     meetingNotesByMonth: {},
+    myMemosByTeacher: {},
     bulletinBoard: [],
   }
 }
@@ -84,6 +85,7 @@ function mergeState(saved) {
     lockedMonths: saved.lockedMonths ?? {},
     archivedSchedules: saved.archivedSchedules ?? {},
     meetingNotesByMonth: saved.meetingNotesByMonth ?? {},
+    myMemosByTeacher: saved.myMemosByTeacher ?? {},
     bulletinBoard: Array.isArray(saved.bulletinBoard) ? saved.bulletinBoard : [],
   }
 }
@@ -262,6 +264,7 @@ export default function App() {
     lockedMonths,
     archivedSchedules,
     meetingNotesByMonth,
+    myMemosByTeacher,
     bulletinBoard,
   } = state
 
@@ -270,6 +273,7 @@ export default function App() {
   const attendance = attendanceByMonth[monthKey] ?? {}
   const memos = memosByMonth[monthKey] ?? {}
   const meetingNotes = meetingNotesByMonth[monthKey] ?? {}
+  const myMemo = identity ? (myMemosByTeacher[identity]?.[monthKey] ?? '') : ''
   const isAdmin = identity === ADMIN_NAME
   const effectiveTeacher = isAdmin ? currentTeacher : identity
   const isMonthLocked = !!(lockedMonths?.[monthKey])
@@ -688,6 +692,20 @@ export default function App() {
     }))
   }
 
+  function setMyMemo(value) {
+    if (!identity) return
+    setState((s) => ({
+      ...s,
+      myMemosByTeacher: {
+        ...s.myMemosByTeacher,
+        [identity]: {
+          ...(s.myMemosByTeacher[identity] ?? {}),
+          [monthKey]: value,
+        },
+      },
+    }))
+  }
+
   function createBulletin() {
     const msg = newBulletinText.trim()
     if (!msg) return
@@ -1070,6 +1088,22 @@ export default function App() {
             <h2>{isAdmin ? '7. メモ' : '3. メモ'}</h2>
             <p>全員がメモと会議記録を編集できます。</p>
           </div>
+        </div>
+
+        <div className="my-memo-card">
+          <div className="my-memo-header">
+            <div>
+              <h3>My Memo</h3>
+              <p>{identity} さん用の個人メモです。他の人でログインすると表示されません。</p>
+            </div>
+          </div>
+          <textarea
+            className="my-memo-textarea"
+            value={myMemo}
+            onChange={(e) => setMyMemo(e.target.value)}
+            placeholder="自分だけのメモを書けます…"
+            rows={8}
+          />
         </div>
 
         {/* Meeting notes — full-width cards, one per meeting session */}
