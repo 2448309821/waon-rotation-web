@@ -1247,87 +1247,11 @@ export default function App() {
         </div>
       </section>
 
-      {/* ── Memos ── */}
-      <section id="sec-memos" className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>{isAdmin ? '7. メモ' : '3. メモ'}</h2>
-            <p>全員がメモと会議記録を編集できます。</p>
-          </div>
-        </div>
-
-        <div className="my-memo-card">
-          <div className="my-memo-header">
-            <div>
-              <h3>My Memo</h3>
-              <p>{identity} さん用の個人メモです。他の人でログインすると表示されません。</p>
-            </div>
-          </div>
-          <textarea
-            className="my-memo-textarea"
-            value={myMemo}
-            onChange={(e) => setMyMemo(e.target.value)}
-            placeholder="自分だけのメモを書けます…"
-            rows={8}
-          />
-        </div>
-
-        {/* Meeting notes — full-width cards, one per meeting session */}
-        {schedule.filter((s) => s.meeting && !s.closed).map((session) => (
-          <div key={`mn-${session.key}`} className="meeting-note-card">
-            <div className="meeting-note-header">
-              <span className="meeting-note-icon">📋</span>
-              <div>
-                <strong>{session.label} 会議記録</strong>
-                <span className="meeting-note-sub">例会の議事録・決定事項・連絡事項</span>
-              </div>
-            </div>
-            <textarea
-              className="meeting-note-textarea"
-              value={meetingNotes[session.key] ?? ''}
-              onChange={(e) => setMeetingNote(session.key, e.target.value)}
-              placeholder="会議内容を記録…（議事録・決定事項・次回への伝達事項など）"
-              rows={8}
-            />
-          </div>
-        ))}
-
-        {/* Regular memo grid */}
-        <div className="memo-list" style={{ marginTop: schedule.some((s) => s.meeting && !s.closed) ? 16 : 0 }}>
-          {schedule.map((session) => (
-            <article key={session.key} className={`memo-card ${session.closed ? 'memo-holiday' : session.meeting ? 'memo-meeting' : ''}`}>
-              <h3>{session.label}</h3>
-              {session.closed ? (
-                <p className="memo-auto">わをん休み</p>
-              ) : (
-                <>
-                  <p className="memo-auto">来る人: {session.selectedTeachers.join('、') || 'なし'}</p>
-                  <p className="memo-auto">例会のみ: {session.meetingOnlyTeachers.join('、') || 'なし'}</p>
-                  {session.selectedMaybeTeachers.length > 0 && <p className="memo-auto">△から追加: {session.selectedMaybeTeachers.join('、')}</p>}
-                  {session.unassignedClasses?.length > 0 && <p className="memo-warn">⚠ 未担当: {session.unassignedClasses.join('、')}</p>}
-                  {session.notes.map((note) => <p key={note} className="memo-auto">{note}</p>)}
-                </>
-              )}
-              <label className="memo-label">
-                メモ
-                <textarea
-                  className="memo-textarea"
-                  value={memos[session.key] ?? ''}
-                  onChange={(e) => setMemo(session.key, e.target.value)}
-                  placeholder="自由に書き込めます…"
-                  rows={3}
-                />
-              </label>
-            </article>
-          ))}
-        </div>
-      </section>
-
       {/* ── 伝言板 ── */}
       <section id="sec-bulletin" className="panel">
         <div className="panel-header">
           <div>
-            <h2>{isAdmin ? '8. 伝言板' : '4. 伝言板'}</h2>
+            <h2>{isAdmin ? '7. 伝言板' : '3. 伝言板'}</h2>
             <p>全員が投稿・編集・削除・固定・重要・並び替えをできます。月をまたいでも残ります。</p>
           </div>
           <button
@@ -1460,6 +1384,82 @@ export default function App() {
             })}
           </div>
         )}
+      </section>
+
+      {/* ── Memos ── */}
+      <section id="sec-memos" className="panel">
+        <div className="panel-header">
+          <div>
+            <h2>{isAdmin ? '8. メモ' : '4. メモ'}</h2>
+            <p>全員がメモと会議記録を編集できます。</p>
+          </div>
+        </div>
+
+        <div className="my-memo-card">
+          <div className="my-memo-header">
+            <div>
+              <h3>My Memo</h3>
+              <p>{identity} さん用の個人メモです。他の人でログインすると表示されません。</p>
+            </div>
+          </div>
+          <textarea
+            className="my-memo-textarea"
+            value={myMemo}
+            onChange={(e) => setMyMemo(e.target.value)}
+            placeholder="自分だけのメモを書けます…"
+            rows={8}
+          />
+        </div>
+
+        {/* Meeting notes — full-width cards, one per meeting session */}
+        {schedule.filter((s) => s.meeting && !s.closed).map((session) => (
+          <div key={`mn-${session.key}`} className="meeting-note-card">
+            <div className="meeting-note-header">
+              <span className="meeting-note-icon">📋</span>
+              <div>
+                <strong>{session.label} 会議記録</strong>
+                <span className="meeting-note-sub">例会の議事録・決定事項・連絡事項</span>
+              </div>
+            </div>
+            <textarea
+              className="meeting-note-textarea"
+              value={meetingNotes[session.key] ?? ''}
+              onChange={(e) => setMeetingNote(session.key, e.target.value)}
+              placeholder="会議内容を記録…（議事録・決定事項・次回への伝達事項など）"
+              rows={8}
+            />
+          </div>
+        ))}
+
+        {/* Regular memo grid */}
+        <div className="memo-list" style={{ marginTop: schedule.some((s) => s.meeting && !s.closed) ? 16 : 0 }}>
+          {schedule.map((session) => (
+            <article key={session.key} className={`memo-card ${session.closed ? 'memo-holiday' : session.meeting ? 'memo-meeting' : ''}`}>
+              <h3>{session.label}</h3>
+              {session.closed ? (
+                <p className="memo-auto">わをん休み</p>
+              ) : (
+                <>
+                  <p className="memo-auto">来る人: {session.selectedTeachers.join('、') || 'なし'}</p>
+                  <p className="memo-auto">例会のみ: {session.meetingOnlyTeachers.join('、') || 'なし'}</p>
+                  {session.selectedMaybeTeachers.length > 0 && <p className="memo-auto">△から追加: {session.selectedMaybeTeachers.join('、')}</p>}
+                  {session.unassignedClasses?.length > 0 && <p className="memo-warn">⚠ 未担当: {session.unassignedClasses.join('、')}</p>}
+                  {session.notes.map((note) => <p key={note} className="memo-auto">{note}</p>)}
+                </>
+              )}
+              <label className="memo-label">
+                メモ
+                <textarea
+                  className="memo-textarea"
+                  value={memos[session.key] ?? ''}
+                  onChange={(e) => setMemo(session.key, e.target.value)}
+                  placeholder="自由に書き込めます…"
+                  rows={3}
+                />
+              </label>
+            </article>
+          ))}
+        </div>
       </section>
 
       {/* ── Archive (admin only) ── */}
