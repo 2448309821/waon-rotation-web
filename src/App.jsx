@@ -734,7 +734,6 @@ export default function App() {
   }
 
   function togglePinBulletin(id) {
-    if (!isAdmin) return
     setState((s) => ({
       ...s,
       bulletinBoard: (Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []).map((p) =>
@@ -750,7 +749,7 @@ export default function App() {
         ...s,
         bulletinBoard: board.map((p) => {
           if (p.id !== id) return p
-          if (!isAdmin && identity !== p.author) return p
+          if (false) return p // all users can mark important
           return { ...p, important: !p.important }
         }),
       }
@@ -758,7 +757,6 @@ export default function App() {
   }
 
   function moveBulletin(id, dir) {
-    if (!isAdmin) return
     setState((s) => {
       const board = Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []
       const sorted = [...board.filter((p) => p.pinned), ...board.filter((p) => !p.pinned)]
@@ -773,7 +771,7 @@ export default function App() {
   }
 
   function reorderBulletin(dragId, dropId) {
-    if (!isAdmin || dragId === dropId) return
+    if (dragId === dropId) return
     setState((s) => {
       const board = Array.isArray(s.bulletinBoard) ? s.bulletinBoard : []
       const sorted = [...board.filter((p) => p.pinned), ...board.filter((p) => !p.pinned)]
@@ -1130,7 +1128,7 @@ export default function App() {
         <div className="panel-header">
           <div>
             <h2>{isAdmin ? '8. 伝言板' : '4. 伝言板'}</h2>
-            <p>連絡事項・お知らせを投稿できます。自分の伝言を編集・削除できます。月をまたいでも残ります。</p>
+            <p>全員が投稿・編集・削除・固定・重要・並び替えをできます。月をまたいでも残ります。</p>
           </div>
           <button
             type="button"
@@ -1182,7 +1180,7 @@ export default function App() {
               return (
                 <div
                   key={post.id}
-                  draggable={isAdmin}
+                  draggable
                   onDragStart={(e) => { bulletinDragRef.current = post.id; e.dataTransfer.effectAllowed = 'move' }}
                   onDragOver={(e) => { e.preventDefault(); if (bulletinDragRef.current !== post.id) setBulletinDragOverId(post.id) }}
                   onDragLeave={() => setBulletinDragOverId(null)}
@@ -1193,7 +1191,7 @@ export default function App() {
                     identity === post.author ? 'bulletin-post-own' : '',
                     isPinned ? 'bulletin-post-pinned' : '',
                     isImportant ? 'bulletin-post-important' : '',
-                    isAdmin ? 'bulletin-post-draggable' : '',
+                    'bulletin-post-draggable',
                     isDragOver ? 'bulletin-drag-over' : '',
                   ].filter(Boolean).join(' ')}>
                   <div className="bulletin-post-header">
@@ -1208,16 +1206,14 @@ export default function App() {
                       </span>
                     </div>
                     <div className="bulletin-post-btns">
-                      {isAdmin && (
-                        <div className="bulletin-move-btns">
-                          <button type="button" className="bulletin-move-btn" disabled={tierPos === 0} onClick={() => moveBulletin(post.id, -1)} title="上へ">↑</button>
-                          <button type="button" className="bulletin-move-btn" disabled={tierPos === tier.length - 1} onClick={() => moveBulletin(post.id, 1)} title="下へ">↓</button>
-                        </div>
-                      )}
-                      {canMarkImportant && !isEditing && (
+                      <div className="bulletin-move-btns">
+                        <button type="button" className="bulletin-move-btn" disabled={tierPos === 0} onClick={() => moveBulletin(post.id, -1)} title="上へ">↑</button>
+                        <button type="button" className="bulletin-move-btn" disabled={tierPos === tier.length - 1} onClick={() => moveBulletin(post.id, 1)} title="下へ">↓</button>
+                      </div>
+                      {!isEditing && (
                         <button type="button" className={`bulletin-important-btn ${isImportant ? 'active' : ''}`} onClick={() => toggleImportantBulletin(post.id)} title={isImportant ? '重要解除' : '重要にする'}>⭐</button>
                       )}
-                      {isAdmin && !isEditing && (
+                      {!isEditing && (
                         <button type="button" className={`bulletin-pin-btn ${isPinned ? 'active' : ''}`} onClick={() => togglePinBulletin(post.id)} title={isPinned ? '固定解除' : '固定する'}>📌</button>
                       )}
                       {canEdit && !isEditing && (
