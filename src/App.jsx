@@ -134,27 +134,21 @@ function ClassChip({ label, checked, onChange, disabled = false }) {
   )
 }
 
-function buildHtmlExport(year, month, teachers, sessions, schedule, memos) {
+function buildHtmlExport(year, month, teachers, sessions, schedule) {
   const rows = []
-  rows.push('<html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-size:14px}td,th{border:1px solid #000;padding:4px 8px;text-align:center}</style></head><body>')
+  rows.push('<html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-size:14px}td,th{border:1px solid #000;padding:6px 10px;text-align:center}th{background:#f3f4f6}</style></head><body>')
   rows.push(`<h1>${year}年${month}月 担当表</h1>`)
   rows.push('<table>')
   rows.push('<tr><th></th>' + sessions.map((s) => `<th>${s.label}</th>`).join('') + '</tr>')
-  rows.push('<tr><td>特別連絡</td>' + schedule.map((s) => `<td>${s.special || ''}</td>`).join('') + '</tr>')
-  if (schedule.some((s) => s.unassignedClasses?.length > 0)) {
-    rows.push('<tr><td>未担当</td>' + schedule.map((s) => `<td>${(s.unassignedClasses || []).join('、')}</td>`).join('') + '</tr>')
-  }
+  rows.push('<tr><td>区分</td>' + schedule.map((s) => `<td>${s.closed ? '休み' : s.meeting ? '例会' : '通常'}</td>`).join('') + '</tr>')
   for (const teacher of teachers) {
-    const row = schedule.map((s) => Object.entries(s.assignments).filter(([, t]) => t === teacher.name).map(([cls]) => cls).join('<br>'))
-    rows.push(`<tr><td>${teacher.name}</td>${row.join('')}</tr>`)
+    const row = schedule.map((s) => {
+      const classes = Object.entries(s.assignments || {}).filter(([, t]) => t === teacher.name).map(([cls]) => cls).join('<br>')
+      return `<td>${classes}</td>`
+    })
+    rows.push(`<tr><td><b>${teacher.name}</b></td>${row.join('')}</tr>`)
   }
   rows.push('</table>')
-  rows.push('<h2>メモ</h2>')
-  rows.push('<ul>')
-  for (const session of sessions) {
-    if (memos[session.key]) rows.push(`<li><b>${session.label}:</b> ${memos[session.key]}</li>`)
-  }
-  rows.push('</ul>')
   rows.push('</body></html>')
   return rows.join('\n')
 }
@@ -579,7 +573,7 @@ export default function App() {
   }
 
   function exportHtmlTable() {
-    const html = buildHtmlExport(year, month, teachers, sessions, schedule, memos)
+    const html = buildHtmlExport(year, month, teachers, sessions, schedule)
     const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.html`
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
