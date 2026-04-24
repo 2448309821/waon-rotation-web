@@ -63,6 +63,12 @@ function buildFallbackState() {
     sessionManualByMonth: {},
     sessionSpecialNotesByMonth: {},
     attendanceByMonth: SEEDED_ATTENDANCE,
+    memosByMonth: SEEDED_MEMOS,
+    lockedMonths: {},
+    archivedSchedules: {},
+    meetingNotesByMonth: {},
+    myMemosByTeacher: {},
+    bulletinBoard: [],
   }
 }
 
@@ -339,12 +345,20 @@ export default function App() {
 
   // ── Persist local state ──────────────────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch {
+      // Ignore storage failures on restricted browsers/devices.
+    }
   }, [state])
 
   useEffect(() => {
-    if (identity) localStorage.setItem(IDENTITY_KEY, identity)
-    else localStorage.removeItem(IDENTITY_KEY)
+    try {
+      if (identity) localStorage.setItem(IDENTITY_KEY, identity)
+      else localStorage.removeItem(IDENTITY_KEY)
+    } catch {
+      // Ignore storage failures on restricted browsers/devices.
+    }
   }, [identity])
 
   useEffect(() => {
@@ -371,7 +385,11 @@ export default function App() {
     if (normalized == null) return
     setTextScale(normalized)
     setTextScaleDraft(String(normalized))
-    localStorage.setItem(DEFAULT_TEXT_SCALE_KEY, String(normalized))
+    try {
+      localStorage.setItem(DEFAULT_TEXT_SCALE_KEY, String(normalized))
+    } catch {
+      // Ignore storage failures on restricted browsers/devices.
+    }
   }
 
   function resetTextScale() {
