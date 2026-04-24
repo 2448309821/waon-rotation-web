@@ -251,9 +251,9 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       (a, b) => teacherNames.indexOf(a) - teacherNames.indexOf(b)
     )
 
-    let special = session.meeting ? '総会' : ''
+    let special = session.meeting ? '会議' : ''
     if (session.meeting && selectedMaybeTeachers.length > 0)
-      special = `総会。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加`
+      special = `会議。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加`
     if (!session.meeting && session.classesOverridden && requiredClasses.some(c => c.includes('王')))
       notes.push('入門分割週（手動設定）')
 
