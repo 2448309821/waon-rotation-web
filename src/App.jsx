@@ -149,6 +149,8 @@ function buildHtmlExport(year, month, teachers, sessions, schedule) {
     rows.push(`<tr><td><b>${teacher.name}</b></td>${row.join('')}</tr>`)
   }
   rows.push('</table>')
+  rows.push('<p>☆　当番は決めませんので、当日の担当者が協力して教室の準備をお願いします。</p>')
+  rows.push('<p>＊事務業務はその日の担当者が助け合って行い、最後に全員で確認してください。</p>')
   rows.push('</body></html>')
   return rows.join('\n')
 }
