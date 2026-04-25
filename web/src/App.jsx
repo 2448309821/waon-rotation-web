@@ -274,6 +274,7 @@ function IdentityGate({ teachers, onSelect }) {
 export default function App() {
   const [state, setState] = useState(loadLocalState)
   const [identity, setIdentity] = useState(loadIdentity)
+  const [theme, setTheme] = useState(() => localStorage.getItem('waon-theme') || 'clay')
   const [textScale, setTextScale] = useState(loadTextScale)
   const [textScaleDraft, setTextScaleDraft] = useState(() => String(loadTextScale()))
   const [cloudStatus, setCloudStatus] = useState('connecting')
@@ -342,6 +343,12 @@ export default function App() {
   } catch (error) {
     console.error(error)
   }
+
+  // ── Persist theme ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('waon-theme', theme)
+  }, [theme])
 
   // ── Persist local state ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1090,6 +1097,11 @@ export default function App() {
             <p className="eyebrow">Waon Rotation</p>
             <h1>出席を入れると自動で担当を決めるサイト</h1>
             <p className="lead">{isAdmin ? '裴さんは全体設定・全員の出席・メモ・導出ができます。' : '先生本人は自分の出席だけ編集できます。全体表は閲覧できます。'}</p>
+            <div className="theme-switcher" aria-label="テーマ切替">
+              {[{ id: 'clay', label: '🔵 Clay' }, { id: 'sakura', label: '🌸 Sakura' }, { id: 'night', label: '🌙 Night' }].map((t) => (
+                <button key={t.id} type="button" className={`theme-btn${theme === t.id ? ' theme-btn-active' : ''}`} onClick={() => setTheme(t.id)}>{t.label}</button>
+              ))}
+            </div>
           </div>
           <div className="identity-badge-wrap">
             <div className={`identity-badge ${isAdmin ? 'identity-badge-admin' : ''}`}>
