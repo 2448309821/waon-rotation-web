@@ -1,7 +1,8 @@
 /* =========================================================
    1. Design Tokens
    ========================================================= */
-:root {
+:root,
+[data-theme=clay] {
   --font-primary: "Montserrat", "Noto Sans JP", "Hiragino Sans", sans-serif;
   --font-display: "Poppins", "Montserrat", "Noto Sans JP", sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", monospace;
@@ -75,6 +76,159 @@
 
   --duration-fast: 180ms;
   --ease-standard: cubic-bezier(.4, 0, .2, 1);
+}
+
+[data-theme=sakura] {
+  --color-primary: #BE185D;
+  --color-secondary: #FFFFFF;
+  --color-surface: #FFF7F9;
+  --color-text: #831843;
+
+  --primary-50: #FDF2F8;
+  --primary-100: #FCE7F3;
+  --primary-200: #FBCFE8;
+  --success-50: #F0FDF4;
+  --warning-50: #FEF3C7;
+  --danger-50: #FFE4E6;
+  --accent-pink-50: #FCE7F3;
+
+  --primary-rgb: 190 24 93;
+  --text-rgb: 131 24 67;
+  --muted-rgb: 157 74 111;
+  --shadow-rgb: 200 160 170;
+  --white-rgb: 255 247 249;
+
+  --color-text-soft: rgba(var(--muted-rgb), 0.9);
+  --color-text-faint: rgba(var(--muted-rgb), 0.68);
+  --surface-soft: rgba(255, 247, 249, 0.82);
+  --surface-page: linear-gradient(135deg, #FDF2F8 0%, #FEF3C7 100%);
+  --surface-hero: linear-gradient(145deg, #FFF7F9 0%, #FDF2F8 100%);
+  --surface-primary: linear-gradient(145deg, #FDF2F8 0%, #FFF7F9 100%);
+  --surface-primary-strong: linear-gradient(145deg, #BE185D 0%, #FBCFE8 100%);
+  --surface-success: linear-gradient(145deg, #F0FDF4 0%, #FFF7F9 100%);
+  --surface-warning: linear-gradient(145deg, #FEF3C7 0%, #FFF7F9 100%);
+  --surface-danger: linear-gradient(145deg, #FFE4E6 0%, #FFF7F9 100%);
+  --surface-pinned: linear-gradient(145deg, #FCE7F3 0%, #FEF3C7 100%);
+  --surface-hero-card: linear-gradient(145deg, rgba(255, 247, 249, 0.94) 0%, rgba(var(--primary-rgb), 0.14) 100%);
+  --surface-overlay: rgba(255, 240, 245, 0.44);
+
+  --border-soft: 2px solid rgba(var(--primary-rgb), 0.22);
+  --clay-shadow: 4px 4px 10px rgba(var(--shadow-rgb), 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.58);
+  --clay-shadow-sm: 2px 3px 7px rgba(var(--shadow-rgb), 0.16), inset 0 1px 2px rgba(255, 255, 255, 0.46);
+  --clay-shadow-inset: inset 2px 2px 6px rgba(var(--shadow-rgb), 0.22), inset -1px -1px 4px rgba(255, 255, 255, 0.76);
+  --clay-shadow-colored: 4px 5px 12px rgba(var(--primary-rgb), 0.18), inset 0 1px 2px rgba(255, 255, 255, 0.38);
+  --focus-ring: 0 0 0 6px rgba(var(--primary-rgb), 0.2);
+  --sticky-shadow: 12px 0 18px rgba(var(--shadow-rgb), 0.2);
+}
+
+[data-theme=sakura] .section-panel,
+[data-theme=sakura] .session-row,
+[data-theme=sakura] .settings-section,
+[data-theme=sakura] .teacher-card,
+[data-theme=sakura] .bulletin-post,
+[data-theme=sakura] .bulletin-compose {
+  background: #FFF0F5;
+  border-color: rgba(var(--primary-rgb), 0.22);
+}
+
+[data-theme=sakura] .session-card {
+  background: #FDF2F8;
+  border-color: rgba(var(--primary-rgb), 0.18);
+}
+
+[data-theme=sakura] input,
+[data-theme=sakura] select,
+[data-theme=sakura] textarea {
+  background: #FCE7F3;
+  border-color: #BE185D;
+}
+
+[data-theme=night] {
+  --color-primary: #60A5FA;
+  --color-secondary: #0F172A;
+  --color-surface: #1E293B;
+  --color-text: #E2E8F0;
+
+  --primary-50: #1E3A8A;
+  --primary-100: #1D4ED8;
+  --primary-200: #3B82F6;
+  --success-50: #064E3B;
+  --warning-50: #78350F;
+  --danger-50: #7F1D1D;
+  --accent-pink-50: #312E81;
+
+  --primary-rgb: 96 165 250;
+  --text-rgb: 226 232 240;
+  --muted-rgb: 148 163 184;
+  --shadow-rgb: 2 6 23;
+  --white-rgb: 30 41 59;
+
+  --color-text-soft: rgba(var(--muted-rgb), 0.9);
+  --color-text-faint: rgba(var(--muted-rgb), 0.68);
+  --surface-soft: rgba(30, 41, 59, 0.82);
+  --surface-page: linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%);
+  --surface-hero: linear-gradient(145deg, #1E293B 0%, #172554 100%);
+  --surface-primary: linear-gradient(145deg, #172554 0%, #1E293B 100%);
+  --surface-primary-strong: linear-gradient(145deg, #2563EB 0%, #60A5FA 100%);
+  --surface-success: linear-gradient(145deg, #064E3B 0%, #1E293B 100%);
+  --surface-warning: linear-gradient(145deg, #78350F 0%, #1E293B 100%);
+  --surface-danger: linear-gradient(145deg, #7F1D1D 0%, #1E293B 100%);
+  --surface-pinned: linear-gradient(145deg, #172554 0%, #312E81 100%);
+  --surface-hero-card: linear-gradient(145deg, rgba(30, 41, 59, 0.94) 0%, rgba(var(--primary-rgb), 0.16) 100%);
+  --surface-overlay: rgba(15, 23, 42, 0.48);
+
+  --border-soft: 2px solid rgba(var(--primary-rgb), 0.28);
+  --clay-shadow: 4px 4px 12px rgba(0, 0, 0, 0.36), inset 0 1px 2px rgba(255, 255, 255, 0.08);
+  --clay-shadow-sm: 2px 3px 8px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.06);
+  --clay-shadow-inset: inset 2px 2px 7px rgba(0, 0, 0, 0.42), inset -1px -1px 3px rgba(255, 255, 255, 0.08);
+  --clay-shadow-colored: 4px 5px 12px rgba(var(--primary-rgb), 0.18), inset 0 1px 2px rgba(255, 255, 255, 0.08);
+  --focus-ring: 0 0 0 6px rgba(var(--primary-rgb), 0.22);
+  --sticky-shadow: 12px 0 18px rgba(0, 0, 0, 0.36);
+}
+
+[data-theme=night] .panel,
+[data-theme=night] .hero,
+[data-theme=night] .section-panel,
+[data-theme=night] .session-row,
+[data-theme=night] .settings-section,
+[data-theme=night] .teacher-card,
+[data-theme=night] .session-card,
+[data-theme=night] .table-wrap,
+[data-theme=night] .bulletin-compose,
+[data-theme=night] .bulletin-post,
+[data-theme=night] .my-memo-card,
+[data-theme=night] .meeting-note-card,
+[data-theme=night] .memo-card,
+[data-theme=night] .archive-row,
+[data-theme=night] .identity-card,
+[data-theme=night] .identity-badge,
+[data-theme=night] .cloud-status {
+  background: #1E293B;
+  border-color: rgba(var(--primary-rgb), 0.24);
+}
+
+[data-theme=night] input,
+[data-theme=night] select,
+[data-theme=night] textarea {
+  background: #273549;
+  border-color: #60A5FA;
+  color: #E2E8F0;
+}
+
+[data-theme=night] .table-wrap th {
+  background: #273549;
+  color: #93C5FD;
+}
+
+[data-theme=night] .table-wrap td,
+[data-theme=night] .col-head,
+[data-theme=night] .td-label {
+  background: #1E293B !important;
+}
+
+[data-theme=night] .th-holiday,
+[data-theme=night] .td-holiday {
+  background: #273549 !important;
 }
 
 /* =========================================================
@@ -632,6 +786,41 @@ textarea::placeholder {
 
 .scroll-nav-item {
   min-width: 48px;
+}
+
+.theme-switcher {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  width: fit-content;
+  margin-top: var(--space-4);
+  padding: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgba(var(--white-rgb), 0.58);
+  box-shadow: var(--clay-shadow-sm);
+}
+
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  border: var(--border-soft);
+  background: var(--surface-hero);
+  box-shadow: var(--clay-shadow-sm);
+  color: var(--color-text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.theme-btn-active {
+  background: var(--surface-primary-strong);
+  border-color: rgba(var(--primary-rgb), 0.28);
+  box-shadow: var(--clay-shadow-inset);
+  color: var(--color-secondary);
 }
 
 .export-actions,
