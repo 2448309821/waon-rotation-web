@@ -757,16 +757,6 @@ textarea::placeholder {
   color: var(--color-text);
 }
 
-.class-chip-on {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.35);
-}
-.class-chip-on::before {
-  content: '✓';
-  opacity: 1;
-}
 
 .bulletin-move-btn,
 .bulletin-pin-btn,
@@ -1188,6 +1178,18 @@ textarea::placeholder {
   content: '✕';
   font-size: 0.7em;
   opacity: 0.7;
+}
+
+/* ON state — must come after .class-chip to override it */
+.class-chip.class-chip-on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.35);
+}
+.class-chip.class-chip-on::before {
+  content: '✓';
+  opacity: 1;
 }
 
 .class-chip input[type="checkbox"] {
