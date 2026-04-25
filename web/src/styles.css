@@ -750,12 +750,22 @@ textarea::placeholder {
 }
 
 .chip.active,
-.class-chip-on,
 .scroll-nav-item-active {
   background: linear-gradient(145deg, var(--primary-100) 0%, var(--primary-50) 100%);
   border-color: rgba(var(--primary-rgb), 0.2);
   box-shadow: var(--clay-shadow-inset);
   color: var(--color-text);
+}
+
+.class-chip-on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.35);
+}
+.class-chip-on::before {
+  content: '✓';
+  opacity: 1;
 }
 
 .bulletin-move-btn,
@@ -1161,15 +1171,23 @@ textarea::placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-1);
   min-height: 38px;
   padding: 0 var(--space-4);
   border-radius: var(--radius-pill);
-  border: var(--border-soft);
-  background: var(--surface-hero);
-  box-shadow: var(--clay-shadow-sm);
-  color: var(--color-text);
+  border: 2px solid #CBD5E1;
+  background: #F1F5F9;
+  box-shadow: none;
+  color: #94A3B8;
+  font-weight: 600;
   cursor: pointer;
   user-select: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.class-chip::before {
+  content: '✕';
+  font-size: 0.7em;
+  opacity: 0.7;
 }
 
 .class-chip input[type="checkbox"] {
