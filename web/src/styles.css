@@ -721,8 +721,8 @@ textarea::placeholder {
   padding: 0 var(--space-4);
   border: 2px solid var(--color-primary);
   border-radius: var(--radius-md);
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.12), inset 0 1px 3px rgba(var(--shadow-rgb), 0.06);
+  background: #DBEAFE;
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.14), inset 0 1px 3px rgba(var(--shadow-rgb), 0.06);
   font-family: var(--font-primary);
   font-size: calc(0.95rem * var(--font-scale));
   font-weight: 500;
@@ -745,8 +745,8 @@ textarea::placeholder {
 .my-memo-textarea:hover,
 .memo-textarea:hover,
 .session-card select:hover {
-  background: #F0F7FF;
-  box-shadow: 0 3px 12px rgba(var(--primary-rgb), 0.2), inset 0 1px 3px rgba(var(--shadow-rgb), 0.06);
+  background: #BFDBFE;
+  box-shadow: 0 3px 12px rgba(var(--primary-rgb), 0.22), inset 0 1px 3px rgba(var(--shadow-rgb), 0.06);
 }
 
 .meeting-note-textarea,
@@ -775,7 +775,7 @@ textarea::placeholder {
 }
 
 .select-default {
-  background: linear-gradient(145deg, var(--primary-50) 0%, rgba(var(--white-rgb), 0.94) 100%);
+  background: #DBEAFE;
 }
 
 .session-card select,
@@ -798,7 +798,7 @@ textarea::placeholder {
 .my-memo-textarea:focus-visible,
 .memo-textarea:focus-visible,
 .session-card select:focus-visible {
-  background: #EFF6FF;
+  background: #BFDBFE;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.22), 0 3px 12px rgba(var(--primary-rgb), 0.18);
   outline: none;
