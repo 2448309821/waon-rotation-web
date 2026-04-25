@@ -63,13 +63,13 @@
   --border-warning: 2px solid rgba(var(--warning-rgb), 0.24);
   --border-success: 2px solid rgba(var(--success-rgb), 0.22);
 
-  --clay-shadow: 6px 6px 16px rgba(var(--shadow-rgb), 0.45), -6px -6px 16px rgba(var(--white-rgb), 0.9), inset 2px 2px 4px rgba(var(--white-rgb), 0.5), inset -2px -2px 4px rgba(var(--shadow-rgb), 0.15);
-  --clay-shadow-sm: 4px 4px 10px rgba(var(--shadow-rgb), 0.32), -4px -4px 10px rgba(var(--white-rgb), 0.86), inset 1px 1px 3px rgba(var(--white-rgb), 0.45), inset -1px -1px 3px rgba(var(--shadow-rgb), 0.12);
-  --clay-shadow-inset: inset 5px 5px 12px rgba(var(--shadow-rgb), 0.28), inset -5px -5px 12px rgba(var(--white-rgb), 0.92);
-  --clay-shadow-colored: 8px 8px 18px rgba(var(--primary-rgb), 0.28), -6px -6px 16px rgba(var(--white-rgb), 0.9), inset 2px 2px 4px rgba(var(--white-rgb), 0.32), inset -2px -2px 4px rgba(var(--text-rgb), 0.16);
-  --clay-shadow-success: 8px 8px 18px rgba(var(--success-rgb), 0.22), -6px -6px 16px rgba(var(--white-rgb), 0.9), inset 2px 2px 4px rgba(var(--white-rgb), 0.32), inset -2px -2px 4px rgba(var(--success-rgb), 0.12);
-  --clay-shadow-warning: 8px 8px 18px rgba(var(--warning-rgb), 0.24), -6px -6px 16px rgba(var(--white-rgb), 0.9), inset 2px 2px 4px rgba(var(--white-rgb), 0.32), inset -2px -2px 4px rgba(var(--warning-rgb), 0.12);
-  --clay-shadow-danger: 8px 8px 18px rgba(var(--danger-rgb), 0.24), -6px -6px 16px rgba(var(--white-rgb), 0.9), inset 2px 2px 4px rgba(var(--white-rgb), 0.32), inset -2px -2px 4px rgba(var(--danger-rgb), 0.12);
+  --clay-shadow: 4px 4px 10px rgba(0, 0, 0, 0.1), inset 0 1px 3px rgba(255, 255, 255, 0.5);
+  --clay-shadow-sm: 2px 3px 7px rgba(0, 0, 0, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.42);
+  --clay-shadow-inset: inset 2px 2px 6px rgba(0, 0, 0, 0.14), inset -1px -1px 4px rgba(255, 255, 255, 0.7);
+  --clay-shadow-colored: 4px 5px 12px rgba(var(--primary-rgb), 0.16), inset 0 1px 2px rgba(255, 255, 255, 0.35);
+  --clay-shadow-success: 4px 5px 12px rgba(var(--success-rgb), 0.14), inset 0 1px 2px rgba(255, 255, 255, 0.34);
+  --clay-shadow-warning: 4px 5px 12px rgba(var(--warning-rgb), 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.34);
+  --clay-shadow-danger: 4px 5px 12px rgba(var(--danger-rgb), 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.34);
   --focus-ring: 0 0 0 6px rgba(var(--primary-rgb), 0.18);
   --sticky-shadow: 12px 0 18px rgba(var(--shadow-rgb), 0.18);
 
@@ -272,6 +272,16 @@ textarea::placeholder {
 .panel {
   padding: var(--space-5);
   margin-bottom: var(--space-4);
+}
+
+.section-panel,
+.session-row,
+.settings-section,
+.teacher-card,
+.bulletin-post,
+.bulletin-compose {
+  background: #F8FAFF;
+  border: 1px solid rgba(59, 130, 246, 0.18);
 }
 
 .panel-title,
@@ -522,7 +532,7 @@ textarea::placeholder {
   border-radius: var(--radius-md);
   border: var(--border-soft);
   background: var(--surface-hero);
-  box-shadow: var(--clay-shadow-sm);
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, 0.1);
   color: var(--color-text);
   font-weight: 700;
   text-decoration: none;
@@ -537,7 +547,7 @@ textarea::placeholder {
   color: var(--color-secondary);
   background: var(--surface-primary-strong);
   border-color: rgba(var(--primary-rgb), 0.22);
-  box-shadow: var(--clay-shadow-colored);
+  box-shadow: 3px 4px 10px rgba(var(--primary-rgb), 0.18);
 }
 
 .icon-btn.danger,
@@ -546,7 +556,7 @@ textarea::placeholder {
   color: var(--color-secondary);
   background: linear-gradient(145deg, var(--color-danger) 0%, var(--danger-50) 100%);
   border: var(--border-danger);
-  box-shadow: var(--clay-shadow-danger);
+  box-shadow: 3px 4px 10px rgba(var(--danger-rgb), 0.18);
 }
 
 .unlock-btn,
@@ -555,7 +565,7 @@ textarea::placeholder {
   color: var(--color-secondary);
   background: linear-gradient(145deg, var(--color-warning) 0%, var(--warning-50) 100%);
   border: var(--border-warning);
-  box-shadow: var(--clay-shadow-warning);
+  box-shadow: 3px 4px 10px rgba(var(--warning-rgb), 0.18);
 }
 
 .export-btn-line,
@@ -564,20 +574,20 @@ textarea::placeholder {
   color: var(--color-secondary);
   background: linear-gradient(145deg, var(--color-success) 0%, var(--success-50) 100%);
   border: var(--border-success);
-  box-shadow: var(--clay-shadow-success);
+  box-shadow: 3px 4px 10px rgba(var(--success-rgb), 0.17);
 }
 
 .export-btn-html,
 .bulletin-pin-btn.active {
   color: var(--color-secondary);
   background: var(--surface-primary-strong);
-  box-shadow: var(--clay-shadow-colored);
+  box-shadow: 3px 4px 10px rgba(var(--primary-rgb), 0.18);
 }
 
 .export-btn-locked {
   background: linear-gradient(145deg, rgba(var(--shadow-rgb), 0.66) 0%, rgba(var(--white-rgb), 0.92) 100%);
   color: var(--color-text);
-  box-shadow: var(--clay-shadow-sm);
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, 0.08);
 }
 
 .chip {
@@ -719,34 +729,13 @@ textarea::placeholder {
   width: 100%;
   min-height: 44px;
   padding: 0 var(--space-4);
-  border: 2px solid var(--color-primary);
+  border: 2px solid transparent;
   border-radius: var(--radius-md);
-  background: #DBEAFE;
-  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.14), inset 0 1px 3px rgba(var(--shadow-rgb), 0.06);
+  background: linear-gradient(145deg, rgba(var(--white-rgb), 0.92) 0%, rgba(var(--primary-rgb), 0.08) 100%);
+  box-shadow: var(--clay-shadow-inset);
   font-family: var(--font-primary);
   font-size: calc(0.95rem * var(--font-scale));
   font-weight: 500;
-  color: var(--color-text);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-}
-
-.year-input:hover,
-.month-select:hover,
-.font-scale-input:hover,
-.session-type-select:hover,
-.session-special-note-input:hover,
-.manual-teacher-select:hover,
-.edit-input:hover,
-.status-behavior-select:hover,
-.teacher-name-input:hover,
-.default-status-select:hover,
-.meeting-note-textarea:hover,
-.bulletin-compose-textarea:hover,
-.my-memo-textarea:hover,
-.memo-textarea:hover,
-.session-card select:hover {
-  background: #BFDBFE;
-  box-shadow: 0 3px 12px rgba(var(--primary-rgb), 0.22), inset 0 1px 3px rgba(var(--shadow-rgb), 0.06);
 }
 
 .meeting-note-textarea,
@@ -775,7 +764,7 @@ textarea::placeholder {
 }
 
 .select-default {
-  background: #DBEAFE;
+  background: linear-gradient(145deg, var(--primary-50) 0%, rgba(var(--white-rgb), 0.94) 100%);
 }
 
 .session-card select,
@@ -798,10 +787,7 @@ textarea::placeholder {
 .my-memo-textarea:focus-visible,
 .memo-textarea:focus-visible,
 .session-card select:focus-visible {
-  background: #BFDBFE;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.22), 0 3px 12px rgba(var(--primary-rgb), 0.18);
-  outline: none;
 }
 
 /* ----- Admin Notices and Collapse ----- */
@@ -892,11 +878,13 @@ textarea::placeholder {
 }
 
 .session-row {
-  background: linear-gradient(145deg, rgba(var(--white-rgb), 0.94) 0%, rgba(var(--primary-rgb), 0.08) 100%);
+  background: #F8FAFF;
+  border: 1px solid rgba(59, 130, 246, 0.18);
 }
 
 .session-row-normal {
-  background: linear-gradient(145deg, rgba(var(--white-rgb), 0.94) 0%, rgba(var(--primary-rgb), 0.08) 100%);
+  background: #F8FAFF;
+  border: 1px solid rgba(59, 130, 246, 0.18);
 }
 
 .session-row-meeting,
@@ -909,7 +897,11 @@ textarea::placeholder {
 .session-row-holiday,
 .session-card-holiday,
 .memo-holiday {
-  background: linear-gradient(145deg, rgba(var(--white-rgb), 0.7) 0%, rgba(var(--shadow-rgb), 0.12) 100%);
+  background: #F5F3FF;
+}
+
+.session-card-holiday {
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
 .session-date-info {
@@ -1107,7 +1099,8 @@ textarea::placeholder {
 
 /* ----- Teacher Area ----- */
 .teacher-card {
-  background: linear-gradient(145deg, rgba(var(--white-rgb), 0.96) 0%, rgba(var(--accent-pink-50), 0.72) 100%);
+  background: #F8FAFF;
+  border: 1px solid rgba(59, 130, 246, 0.18);
 }
 
 .teacher-card-header,
@@ -1185,14 +1178,18 @@ textarea::placeholder {
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
+  background: #EFF6FF;
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
 .session-card-normal {
-  background: linear-gradient(145deg, rgba(var(--white-rgb), 0.96) 0%, rgba(var(--primary-rgb), 0.08) 100%);
+  background: #EFF6FF;
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
 .session-card-meeting {
-  background: linear-gradient(145deg, var(--primary-100) 0%, rgba(var(--white-rgb), 0.96) 100%);
+  background: #ECFDF5;
+  border: 1px solid rgba(59, 130, 246, 0.15);
   box-shadow: var(--clay-shadow-colored);
 }
 
@@ -1313,7 +1310,8 @@ textarea::placeholder {
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  background: var(--surface-primary);
+  background: #F8FAFF;
+  border: 1px solid rgba(59, 130, 246, 0.18);
 }
 
 .bulletin-compose-author,
@@ -1334,7 +1332,8 @@ textarea::placeholder {
 
 .bulletin-post {
   padding: var(--space-4);
-  background: linear-gradient(145deg, rgba(var(--white-rgb), 0.96) 0%, rgba(var(--primary-rgb), 0.06) 100%);
+  background: #F8FAFF;
+  border: 1px solid rgba(59, 130, 246, 0.18);
 }
 
 .bulletin-edit-area {
@@ -1547,9 +1546,9 @@ textarea::placeholder {
 
 @media (max-width: 600px) {
   :root {
-    --clay-shadow: 4px 4px 10px rgba(var(--shadow-rgb), 0.32), -4px -4px 10px rgba(var(--white-rgb), 0.86), inset 1px 1px 3px rgba(var(--white-rgb), 0.42), inset -1px -1px 3px rgba(var(--shadow-rgb), 0.1);
-    --clay-shadow-sm: 2px 2px 6px rgba(var(--shadow-rgb), 0.24), -2px -2px 6px rgba(var(--white-rgb), 0.82), inset 1px 1px 2px rgba(var(--white-rgb), 0.4), inset -1px -1px 2px rgba(var(--shadow-rgb), 0.08);
-    --clay-shadow-inset: inset 3px 3px 8px rgba(var(--shadow-rgb), 0.22), inset -3px -3px 8px rgba(var(--white-rgb), 0.9);
+    --clay-shadow: 3px 3px 8px rgba(0, 0, 0, 0.09), inset 0 1px 2px rgba(255, 255, 255, 0.45);
+    --clay-shadow-sm: 2px 2px 5px rgba(0, 0, 0, 0.07);
+    --clay-shadow-inset: inset 2px 2px 6px rgba(0, 0, 0, 0.14), inset -1px -1px 4px rgba(255, 255, 255, 0.7);
   }
 
   .page {
@@ -1731,7 +1730,7 @@ textarea::placeholder {
   .memo-card:hover,
   .archive-row:hover {
     transform: translateY(-1px);
-    box-shadow: 10px 10px 22px rgba(var(--shadow-rgb), 0.36), -8px -8px 22px rgba(var(--white-rgb), 0.94), inset 2px 2px 4px rgba(var(--white-rgb), 0.45), inset -2px -2px 4px rgba(var(--shadow-rgb), 0.12);
+    box-shadow: 4px 5px 12px rgba(0, 0, 0, 0.12);
   }
 
   .hero-switch-btn:active:not(:disabled),
@@ -1757,7 +1756,7 @@ textarea::placeholder {
   .scroll-nav-toggle:active:not(:disabled),
   .scroll-nav-item:active:not(:disabled) {
     transform: translateY(1px);
-    box-shadow: var(--clay-shadow-inset);
+    box-shadow: inset 2px 2px 6px rgba(0, 0, 0, 0.14);
   }
 
   .identity-card:hover {
