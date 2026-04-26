@@ -14,18 +14,20 @@ export const DEFAULT_TEACHERS = [
 
 // status.behavior controls scheduling logic; label is user-facing display text
 export const DEFAULT_STATUS_OPTIONS = [
-  { id: 'yes',          label: '○',     behavior: 'yes' },
-  { id: 'maybe',        label: '△',     behavior: 'maybe' },
-  { id: 'no',           label: '×',     behavior: 'no' },
-  { id: 'meeting_only', label: '例会のみ', behavior: 'meeting_only' },
+  { id: 'yes',           label: '○',        behavior: 'yes' },
+  { id: 'maybe',         label: '△',        behavior: 'maybe' },
+  { id: 'maybe_meeting', label: '△・会議○', behavior: 'maybe_meeting' },
+  { id: 'no',            label: '×',        behavior: 'no' },
+  { id: 'meeting_only',  label: '例会のみ',  behavior: 'meeting_only' },
 ]
 
 // Behaviors used in scheduling logic
 export const BEHAVIORS = [
-  { value: 'yes',          label: '出席・担当あり (○ 相当)' },
-  { value: 'maybe',        label: '人数不足なら担当 (△ 相当)' },
-  { value: 'no',           label: '欠席 (× 相当)' },
-  { value: 'meeting_only', label: '例会のみ参加、担当なし' },
+  { value: 'yes',           label: '出席・担当あり (○ 相当)' },
+  { value: 'maybe',         label: '人数不足なら担当 (△ 相当)' },
+  { value: 'maybe_meeting', label: '人数不足なら担当、例会は確実に出席 (△・会議○)' },
+  { value: 'no',            label: '欠席 (× 相当)' },
+  { value: 'meeting_only',  label: '例会のみ参加、担当なし' },
 ]
 
 export const sessionTypeOptions = [
@@ -220,9 +222,10 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     const getStatus = t =>
       attendanceByTeacher[t.name]?.[session.key] ?? t.defaultStatus ?? 'no'
 
-    const yesTeachers         = teachers.filter(t => behaviorOf[getStatus(t)] === 'yes')
-    const maybeTeachers       = teachers.filter(t => behaviorOf[getStatus(t)] === 'maybe')
-    const meetingOnlyTeachers = teachers.filter(t => behaviorOf[getStatus(t)] === 'meeting_only')
+    const yesTeachers            = teachers.filter(t => behaviorOf[getStatus(t)] === 'yes')
+    const maybeTeachers          = teachers.filter(t => ['maybe', 'maybe_meeting'].includes(behaviorOf[getStatus(t)]))
+    const meetingOnlyTeachers    = teachers.filter(t => behaviorOf[getStatus(t)] === 'meeting_only')
+    const maybeMeetingTeachers   = teachers.filter(t => behaviorOf[getStatus(t)] === 'maybe_meeting')
 
     let selectedMaybeTeachers = []
     let autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, seed) : {}
@@ -286,6 +289,8 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       selectedTeachers,
       selectedMaybeTeachers: selectedMaybeTeachers.map(t => t.name),
       meetingOnlyTeachers:   meetingOnlyTeachers.map(t => t.name),
+      // △・会議○ teachers who were NOT selected for teaching (still at the meeting)
+      maybeMeetingTeachers:  maybeMeetingTeachers.filter(t => !selectedMaybeTeachers.includes(t)).map(t => t.name),
       unassignedClasses,
       notes,
     }
