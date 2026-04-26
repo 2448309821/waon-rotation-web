@@ -1270,13 +1270,10 @@ export default function App() {
                   <td className="col-sticky td-label">{teacher.name}</td>
                   {schedule.map((s) => {
                     const assigned = Object.entries(s.assignments).filter(([, assignedTeacher]) => assignedTeacher === teacher.name).map(([className]) => className).join(' / ')
-                    const isMeetingOnly    = s.meetingOnlyTeachers?.includes(teacher.name)
-                    const isMaybeMeeting   = s.maybeMeetingTeachers?.includes(teacher.name)
+                    const atMeeting = s.meetingOnlyTeachers?.includes(teacher.name) || s.maybeMeetingTeachers?.includes(teacher.name)
                     return (
                       <td key={s.key} className={s.closed ? 'td-holiday' : ''}>
-                        {assigned
-                          || (isMeetingOnly  ? <span className="td-meeting-only">例会のみ</span> : null)
-                          || (isMaybeMeeting ? <span className="td-maybe-meeting">△・会議○</span> : '')}
+                        {assigned || (atMeeting ? '会議' : '')}
                       </td>
                     )
                   })}
