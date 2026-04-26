@@ -15,6 +15,7 @@ const STORAGE_KEY = 'rotation-web-state-v7'
 const IDENTITY_KEY = 'rotation-web-identity-v1'
 const TEXT_SCALE_KEY = 'rotation-web-text-scale-v1'
 const DEFAULT_TEXT_SCALE_KEY = 'rotation-web-default-text-scale-v1'
+const THEME_STORAGE_KEY = 'waon-theme'
 const MIN_TEXT_SCALE = 80
 const MAX_TEXT_SCALE = 200
 const ADMIN_NAME = '裴'
@@ -130,6 +131,14 @@ function loadTextScale() {
     return 100
   } catch {
     return 100
+  }
+}
+
+function loadTheme() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) || 'clay'
+  } catch {
+    return 'clay'
   }
 }
 
@@ -276,7 +285,7 @@ function IdentityGate({ teachers, onSelect }) {
 export default function App() {
   const [state, setState] = useState(loadLocalState)
   const [identity, setIdentity] = useState(loadIdentity)
-  const [theme, setTheme] = useState(() => localStorage.getItem('waon-theme') || 'clay')
+  const [theme, setTheme] = useState(loadTheme)
   const [textScale, setTextScale] = useState(loadTextScale)
   const [textScaleDraft, setTextScaleDraft] = useState(() => String(loadTextScale()))
   const [cloudStatus, setCloudStatus] = useState('connecting')
@@ -349,7 +358,11 @@ export default function App() {
   // ── Persist theme ────────────────────────────────────────────────────────────
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('waon-theme', theme)
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme)
+    } catch {
+      // Ignore storage failures on restricted browsers/devices.
+    }
   }, [theme])
 
   // ── Persist local state ──────────────────────────────────────────────────────
@@ -1100,7 +1113,12 @@ export default function App() {
             <h1>出席を入れると自動で担当を決めるサイト</h1>
             <p className="lead">{isAdmin ? '裴さんは全体設定・全員の出席・メモ・導出ができます。' : '先生本人は自分の出席だけ編集できます。全体表は閲覧できます。'}</p>
             <div className="theme-switcher" aria-label="テーマ切替">
-              {[{ id: 'clay', label: '🔵 Clay' }, { id: 'sakura', label: '🌸 Sakura' }, { id: 'night', label: '🌙 Night' }].map((t) => (
+              {[
+                { id: 'clay', label: '🔵 Clay' },
+                { id: 'sakura', label: '🌸 Sakura' },
+                { id: 'night', label: '🌙 Night' },
+                { id: 'easy', label: '見やすい' },
+              ].map((t) => (
                 <button key={t.id} type="button" className={`theme-btn${theme === t.id ? ' theme-btn-active' : ''}`} onClick={() => setTheme(t.id)}>{t.label}</button>
               ))}
             </div>
@@ -1251,7 +1269,7 @@ export default function App() {
             <thead>
               <tr>
                 <th className="col-sticky col-head">名前</th>
-                {sessions.map((s) => <th key={s.key} className={s.closed ? 'th-holiday' : s.meeting ? 'th-meeting' : ''}>{s.label}</th>)}
+                {sessions.map((s) => <th key={s.key}>{s.label}</th>)}
               </tr>
             </thead>
             <tbody>
