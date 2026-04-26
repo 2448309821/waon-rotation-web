@@ -200,6 +200,8 @@ function buildLineText(year, month, schedule, memos) {
         lines.push(`出席：${session.selectedTeachers.join('・')}`)
       if (session.meetingOnlyTeachers.length > 0)
         lines.push(`例会のみ：${session.meetingOnlyTeachers.join('・')}`)
+      if (session.maybeMeetingTeachers?.length > 0)
+        lines.push(`△・会議○：${session.maybeMeetingTeachers.join('・')}`)
       if (session.selectedMaybeTeachers?.length > 0)
         lines.push(`△から追加：${session.selectedMaybeTeachers.join('・')}`)
       const memo = memos[session.key]
@@ -1268,10 +1270,13 @@ export default function App() {
                   <td className="col-sticky td-label">{teacher.name}</td>
                   {schedule.map((s) => {
                     const assigned = Object.entries(s.assignments).filter(([, assignedTeacher]) => assignedTeacher === teacher.name).map(([className]) => className).join(' / ')
-                    const isMeetingOnly = s.meetingOnlyTeachers?.includes(teacher.name)
+                    const isMeetingOnly    = s.meetingOnlyTeachers?.includes(teacher.name)
+                    const isMaybeMeeting   = s.maybeMeetingTeachers?.includes(teacher.name)
                     return (
                       <td key={s.key} className={s.closed ? 'td-holiday' : ''}>
-                        {assigned || (isMeetingOnly ? <span className="td-meeting-only">例会のみ</span> : '')}
+                        {assigned
+                          || (isMeetingOnly  ? <span className="td-meeting-only">例会のみ</span> : null)
+                          || (isMaybeMeeting ? <span className="td-maybe-meeting">△・会議○</span> : '')}
                       </td>
                     )
                   })}
@@ -1477,6 +1482,7 @@ export default function App() {
                 <>
                   <p className="memo-auto">来る人: {session.selectedTeachers.join('、') || 'なし'}</p>
                   <p className="memo-auto">例会のみ: {session.meetingOnlyTeachers.join('、') || 'なし'}</p>
+                  {session.maybeMeetingTeachers?.length > 0 && <p className="memo-auto">△・会議○: {session.maybeMeetingTeachers.join('、')}</p>}
                   {session.selectedMaybeTeachers.length > 0 && <p className="memo-auto">△から追加: {session.selectedMaybeTeachers.join('、')}</p>}
                   {session.unassignedClasses?.length > 0 && <p className="memo-warn">⚠ 未担当: {session.unassignedClasses.join('、')}</p>}
                   {session.notes.map((note) => <p key={note} className="memo-auto">{note}</p>)}
