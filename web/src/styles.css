@@ -1688,6 +1688,44 @@ textarea::placeholder {
   color: #FCD34D;
 }
 
+.td-status {
+  font-weight: 700;
+  font-size: 1.05em;
+}
+
+.td-status-yes {
+  color: #16A34A !important;
+}
+
+.td-status-maybe {
+  color: #D97706 !important;
+}
+
+.td-status-no {
+  color: var(--color-text-soft) !important;
+  opacity: 0.45;
+}
+
+[data-theme=sakura] .td-status-yes {
+  color: #15803D !important;
+}
+
+[data-theme=sakura] .td-status-maybe {
+  color: #B45309 !important;
+}
+
+[data-theme=night] .td-status-yes {
+  color: #4ADE80 !important;
+}
+
+[data-theme=night] .td-status-maybe {
+  color: #FBBF24 !important;
+}
+
+[data-theme=night] .td-status-no {
+  opacity: 0.35;
+}
+
 .th-holiday,
 .td-holiday {
   background: linear-gradient(145deg, rgba(var(--shadow-rgb), 0.16) 0%, rgba(var(--white-rgb), 0.94) 100%) !important;

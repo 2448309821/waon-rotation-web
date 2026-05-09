@@ -1289,9 +1289,33 @@ export default function App() {
                   {schedule.map((s) => {
                     const assigned = Object.entries(s.assignments).filter(([, assignedTeacher]) => assignedTeacher === teacher.name).map(([className]) => className).join(' / ')
                     const atMeeting = s.meetingOnlyTeachers?.includes(teacher.name) || s.maybeMeetingTeachers?.includes(teacher.name)
+
+                    let cellClass = s.closed ? 'td-holiday' : ''
+                    let content = ''
+
+                    if (assigned) {
+                      content = assigned
+                    } else if (atMeeting) {
+                      content = '会議'
+                    } else if (!s.closed) {
+                      const statusId = getEffectiveStatus(teacher.name, s.key)
+                      const statusOpt = statusOptions.find(o => o.id === statusId)
+                      const behavior = statusOpt?.behavior ?? 'no'
+                      if (behavior === 'yes') {
+                        content = '○'
+                        cellClass += ' td-status td-status-yes'
+                      } else if (behavior === 'maybe' || behavior === 'maybe_meeting') {
+                        content = '△'
+                        cellClass += ' td-status td-status-maybe'
+                      } else {
+                        content = '×'
+                        cellClass += ' td-status td-status-no'
+                      }
+                    }
+
                     return (
-                      <td key={s.key} className={s.closed ? 'td-holiday' : ''}>
-                        {assigned || (atMeeting ? '会議' : '')}
+                      <td key={s.key} className={cellClass.trim()}>
+                        {content}
                       </td>
                     )
                   })}
