@@ -229,7 +229,10 @@ function buildLineText(year, month, schedule, memos) {
 function ScrollNav({ sections, activeSection, navOpen, onToggle }) {
   function scrollTo(id) {
     const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (el) {
+      const top = el.getBoundingClientRect().top + window.pageYOffset - 18
+      window.scrollTo({ top, behavior: 'smooth' })
+    }
   }
   return (
     <>
@@ -254,15 +257,41 @@ function ScrollNav({ sections, activeSection, navOpen, onToggle }) {
 }
 
 function IdentityGate({ teachers, onSelect }) {
+  const previewSections = ['月を選ぶ', '各回設定', '出席入力', '担当表', '伝言板', 'メモ', '設定']
   return (
     <div className="page">
-      <section className="hero">
-        <p className="eyebrow">Waon Rotation</p>
-        <h1>まず自分の名前を選んでください</h1>
-        <p className="lead">先生本人は自分の出席だけ編集できます。裴さんは管理者として全体を編集できます。</p>
+      <aside className="app-sidebar" aria-label="メインナビゲーション">
+        <div className="sidebar-brand">
+          <span className="brand-mark">W</span>
+          <div>
+            <strong>Waon</strong>
+            <span>Rotation</span>
+          </div>
+        </div>
+        <nav className="sidebar-nav">
+          {previewSections.map((label, index) => (
+            <button key={label} type="button" className={`sidebar-link ${index === 0 ? 'sidebar-link-active' : ''}`} disabled>
+              <span className="sidebar-index">{String(index + 1).padStart(2, '0')}</span>
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <span>共有ローテーション表</span>
+          <strong>名前を選択</strong>
+        </div>
+      </aside>
+
+      <main className="app-main">
+      <section className="hero identity-hero">
+        <div>
+          <p className="eyebrow">Waon Rotation</p>
+          <h1>まず自分の名前を選んでください</h1>
+          <p className="lead">先生本人は自分の出席だけ編集できます。裴さんは管理者として全体を編集できます。</p>
+        </div>
       </section>
 
-      <section className="panel">
+      <section className="panel identity-panel">
         <h2 className="panel-title">あなたは誰ですか？</h2>
         <div className="identity-grid">
           {teachers.map((teacher) => (
@@ -278,6 +307,7 @@ function IdentityGate({ teachers, onSelect }) {
           ))}
         </div>
       </section>
+      </main>
     </div>
   )
 }
@@ -1060,21 +1090,21 @@ export default function App() {
   // ── Nav sections (computed before gate so hook below can reference it) ────────
   const navSections = isAdmin
     ? [
-        { id: 'sec-month',      label: '月' },
-        { id: 'sec-sessions',   label: '各回' },
-        { id: 'sec-special',    label: '特殊' },
-        { id: 'sec-settings',   label: '設定' },
-        { id: 'sec-teachers',   label: '先生' },
-        { id: 'sec-attendance', label: '出席' },
-        { id: 'sec-schedule',   label: '担当' },
-        { id: 'sec-bulletin',   label: '伝言' },
+        { id: 'sec-month',      label: '月を選ぶ' },
+        { id: 'sec-sessions',   label: '各回設定' },
+        { id: 'sec-special',    label: '特殊設定' },
+        { id: 'sec-settings',   label: 'クラス設定' },
+        { id: 'sec-teachers',   label: '先生設定' },
+        { id: 'sec-attendance', label: '出席入力' },
+        { id: 'sec-schedule',   label: '担当表' },
+        { id: 'sec-bulletin',   label: '伝言板' },
         { id: 'sec-memos',      label: 'メモ' },
-        { id: 'sec-archive',    label: '保存' },
+        { id: 'sec-archive',    label: '保存済み' },
       ]
     : [
-        { id: 'sec-attendance', label: '出席' },
-        { id: 'sec-schedule',   label: '担当' },
-        { id: 'sec-bulletin',   label: '伝言' },
+        { id: 'sec-attendance', label: '出席入力' },
+        { id: 'sec-schedule',   label: '担当表' },
+        { id: 'sec-bulletin',   label: '伝言板' },
         { id: 'sec-memos',      label: 'メモ' },
       ]
 
@@ -1102,9 +1132,50 @@ export default function App() {
 
   const archiveEntries = Object.entries(archivedSchedules ?? {}).sort(([a], [b]) => b.localeCompare(a))
   const sortedBulletin = [...bulletinBoard.filter((p) => p.pinned), ...bulletinBoard.filter((p) => !p.pinned)]
+  const unassignedCount = schedule.reduce((sum, session) => sum + (session.unassignedClasses?.length ?? 0), 0)
+  const editableSessions = sessions.filter((session) => !session.closed)
+  const explicitAttendanceCount = teachers.reduce((sum, teacher) => (
+    sum + editableSessions.filter((session) => attendance[teacher.name]?.[session.key] !== undefined).length
+  ), 0)
+  const totalAttendanceSlots = teachers.length * editableSessions.length
+  const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
 
   return (
     <div className="page" style={{ '--font-scale': textScale / 100 }}>
+      <aside className="app-sidebar" aria-label="メインナビゲーション">
+        <div className="sidebar-brand">
+          <span className="brand-mark">W</span>
+          <div>
+            <strong>Waon</strong>
+            <span>Rotation</span>
+          </div>
+        </div>
+        <nav className="sidebar-nav">
+          {navSections.map((section, index) => (
+            <button
+              key={section.id}
+              type="button"
+              className={`sidebar-link ${activeSection === section.id ? 'sidebar-link-active' : ''}`}
+              onClick={() => {
+                const el = document.getElementById(section.id)
+                if (el) {
+                  const top = el.getBoundingClientRect().top + window.pageYOffset - 18
+                  window.scrollTo({ top, behavior: 'smooth' })
+                }
+              }}
+            >
+              <span className="sidebar-index">{String(index + 1).padStart(2, '0')}</span>
+              <span>{section.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <span>{year}年 {MONTH_JP[month - 1]}</span>
+          <strong>{identity}</strong>
+        </div>
+      </aside>
+
+      <main className="app-main">
       {/* ── Hero ── */}
       <section className="hero">
         <div className="hero-topline">
@@ -1114,9 +1185,9 @@ export default function App() {
             <p className="lead">{isAdmin ? '裴さんは全体設定・全員の出席・メモ・導出ができます。' : '先生本人は自分の出席だけ編集できます。全体表は閲覧できます。'}</p>
             <div className="theme-switcher" aria-label="テーマ切替">
               {[
-                { id: 'clay', label: '🔵 Clay' },
-                { id: 'sakura', label: '🌸 Sakura' },
-                { id: 'night', label: '🌙 Night' },
+                { id: 'clay', label: '標準' },
+                { id: 'sakura', label: '淡色' },
+                { id: 'night', label: '夜間' },
                 { id: 'easy', label: '見やすい' },
               ].map((t) => (
                 <button key={t.id} type="button" className={`theme-btn${theme === t.id ? ' theme-btn-active' : ''}`} onClick={() => setTheme(t.id)}>{t.label}</button>
@@ -1134,6 +1205,25 @@ export default function App() {
         <div className={`cloud-status cloud-status-${cloudStatus}`}>
           <strong>Cloud Sync</strong>
           <span>{cloudMessage}</span>
+        </div>
+      </section>
+
+      <section className="overview-grid" aria-label="月の概要">
+        <div className="overview-card">
+          <span>対象月</span>
+          <strong>{year}年 {MONTH_JP[month - 1]}</strong>
+        </div>
+        <div className="overview-card">
+          <span>出席入力</span>
+          <strong>{explicitAttendanceCount}/{totalAttendanceSlots}</strong>
+        </div>
+        <div className={`overview-card ${unassignedCount > 0 ? 'overview-card-warn' : 'overview-card-ok'}`}>
+          <span>未担当</span>
+          <strong>{unassignedCount}</strong>
+        </div>
+        <div className="overview-card">
+          <span>例会</span>
+          <strong>{meetingCount}</strong>
         </div>
       </section>
 
@@ -1559,6 +1649,7 @@ export default function App() {
 
       {/* ── Scroll nav ── */}
       <ScrollNav sections={navSections} activeSection={activeSection} navOpen={navOpen} onToggle={(next) => setNavOpen((prev) => typeof next === 'boolean' ? next : !prev)} />
+      </main>
     </div>
   )
 }
