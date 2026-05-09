@@ -329,6 +329,8 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState('')
   const [activeSection, setActiveSection] = useState('')
   const [activeView, setActiveView] = useState('home')
+  const [uiMode, setUiMode] = useState('auto')
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
   const [mobileAdminPanel, setMobileAdminPanel] = useState('sessions')
   const [navOpen, setNavOpen] = useState(false)
   const [showNewBulletin, setShowNewBulletin] = useState(false)
@@ -457,6 +459,14 @@ export default function App() {
       setState((s) => ({ ...s, currentTeacher: identity }))
     }
   }, [identity, isAdmin, currentTeacher])
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)')
+    const update = () => setIsMobileViewport(media.matches)
+    update()
+    media.addEventListener?.('change', update)
+    return () => media.removeEventListener?.('change', update)
+  }, [])
 
   // ── URL ?t= auto-select ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1137,9 +1147,26 @@ export default function App() {
   ), 0)
   const totalAttendanceSlots = teachers.length * editableSessions.length
   const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
+  const effectiveUiMode = uiMode === 'auto' ? (isMobileViewport ? 'mobile' : 'desktop') : uiMode
   const canUseView = (sections, id) => sections.some((item) => item.id === id && (!item.adminOnly || isAdmin))
   const currentDesktopView = canUseView(navSections, activeView) ? activeView : 'home'
   const currentMobileView = canUseView(mobileNavSections, activeView) ? activeView : 'home'
+
+  function UiModeSwitch({ compact = false }) {
+    return (
+      <div className={compact ? 'ui-mode-switch ui-mode-switch-compact' : 'ui-mode-switch'} aria-label="UI表示切替">
+        {[
+          { id: 'auto', label: '自動' },
+          { id: 'desktop', label: '桌面' },
+          { id: 'mobile', label: '手机' },
+        ].map((mode) => (
+          <button key={mode.id} type="button" className={uiMode === mode.id ? 'active' : ''} onClick={() => setUiMode(mode.id)}>
+            {mode.label}
+          </button>
+        ))}
+      </div>
+    )
+  }
 
   function AppHeader({ title, subtitle, actions }) {
     return (
@@ -1802,6 +1829,7 @@ export default function App() {
           <strong>{identity}</strong>
           <span>{isAdmin ? '管理者' : '本人'}</span>
         </button>
+        <UiModeSwitch compact />
       </header>
     )
   }
@@ -2131,7 +2159,7 @@ export default function App() {
   }
 
   return (
-    <div className="page" style={{ '--font-scale': textScale / 100 }}>
+    <div className={`page ui-${effectiveUiMode}`} style={{ '--font-scale': textScale / 100 }}>
       <aside className="app-sidebar desktop-only" aria-label="メインナビゲーション">
         <div className="sidebar-brand">
           <span className="brand-mark">W</span>
@@ -2162,6 +2190,7 @@ export default function App() {
             <button key={t.id} type="button" className={`theme-pill${theme === t.id ? ' theme-pill-active' : ''}`} onClick={() => setTheme(t.id)}>{t.label}</button>
           ))}
         </div>
+        <UiModeSwitch />
         <div className="sidebar-footer">
           <span>{year}年 {MONTH_JP[month - 1]}</span>
           <strong>{identity}</strong>
