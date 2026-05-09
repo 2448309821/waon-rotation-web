@@ -16,6 +16,7 @@ const IDENTITY_KEY = 'rotation-web-identity-v1'
 const TEXT_SCALE_KEY = 'rotation-web-text-scale-v1'
 const DEFAULT_TEXT_SCALE_KEY = 'rotation-web-default-text-scale-v1'
 const THEME_STORAGE_KEY = 'waon-theme'
+const UI_MODE_KEY = 'waon-ui-mode'
 const MIN_TEXT_SCALE = 80
 const MAX_TEXT_SCALE = 200
 const ADMIN_NAME = '裴'
@@ -142,6 +143,18 @@ function loadTheme() {
   }
 }
 
+function loadUiMode() {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const fromUrl = params.get('ui')
+    if (['auto', 'desktop', 'mobile'].includes(fromUrl)) return fromUrl
+    const saved = localStorage.getItem(UI_MODE_KEY)
+    return ['auto', 'desktop', 'mobile'].includes(saved) ? saved : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
 function ClassChip({ label, checked, onChange, disabled = false }) {
   return (
     <label className={`class-chip ${checked ? 'class-chip-on' : ''} ${disabled ? 'class-chip-disabled' : ''}`}>
@@ -256,7 +269,23 @@ function ScrollNav({ sections, activeSection, navOpen, onToggle }) {
   )
 }
 
-function IdentityGate({ teachers, onSelect }) {
+function ModeSwitch({ uiMode, onChange, compact = false }) {
+  return (
+    <div className={compact ? 'ui-mode-switch ui-mode-switch-compact' : 'ui-mode-switch'} aria-label="UI表示切替">
+      {[
+        { id: 'auto', label: '自動' },
+        { id: 'desktop', label: '桌面' },
+        { id: 'mobile', label: '手机' },
+      ].map((mode) => (
+        <button key={mode.id} type="button" className={uiMode === mode.id ? 'active' : ''} onClick={() => onChange(mode.id)}>
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function IdentityGate({ teachers, onSelect, uiMode = 'auto', onUiModeChange = () => {} }) {
   const previewSections = ['ホーム', '出席入力', '担当表', '伝言板・メモ']
   return (
     <div className="page">
@@ -280,6 +309,7 @@ function IdentityGate({ teachers, onSelect }) {
           <span>ダッシュボード</span>
           <strong>ログイン待ち</strong>
         </div>
+        <ModeSwitch uiMode={uiMode} onChange={onUiModeChange} />
       </aside>
 
       <main className="app-main">
@@ -288,6 +318,7 @@ function IdentityGate({ teachers, onSelect }) {
           <p className="eyebrow">Waon Rotation</p>
           <h1>新しい担当表ワークスペースへ</h1>
           <p className="lead">左の目次で6つの画面に分け、出席、担当表、各回設定、先生ごとの担当可能クラスを見やすく整理します。</p>
+          <ModeSwitch uiMode={uiMode} onChange={onUiModeChange} compact />
         </div>
       </section>
 
@@ -329,7 +360,7 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState('')
   const [activeSection, setActiveSection] = useState('')
   const [activeView, setActiveView] = useState('home')
-  const [uiMode, setUiMode] = useState('auto')
+  const [uiMode, setUiMode] = useState(loadUiMode)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
   const [mobileAdminPanel, setMobileAdminPanel] = useState('sessions')
   const [navOpen, setNavOpen] = useState(false)
@@ -398,6 +429,14 @@ export default function App() {
       // Ignore storage failures on restricted browsers/devices.
     }
   }, [theme])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(UI_MODE_KEY, uiMode)
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [uiMode])
 
   // ── Persist local state ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1135,7 +1174,7 @@ export default function App() {
 
   // ── Gate ──────────────────────────────────────────────────────────────────────
   if (!identity || !teachers.some((t) => t.name === identity)) {
-    return <IdentityGate teachers={teachers} onSelect={selectIdentity} />
+    return <IdentityGate teachers={teachers} onSelect={selectIdentity} uiMode={uiMode} onUiModeChange={setUiMode} />
   }
 
   const archiveEntries = Object.entries(archivedSchedules ?? {}).sort(([a], [b]) => b.localeCompare(a))
@@ -1153,19 +1192,7 @@ export default function App() {
   const currentMobileView = canUseView(mobileNavSections, activeView) ? activeView : 'home'
 
   function UiModeSwitch({ compact = false }) {
-    return (
-      <div className={compact ? 'ui-mode-switch ui-mode-switch-compact' : 'ui-mode-switch'} aria-label="UI表示切替">
-        {[
-          { id: 'auto', label: '自動' },
-          { id: 'desktop', label: '桌面' },
-          { id: 'mobile', label: '手机' },
-        ].map((mode) => (
-          <button key={mode.id} type="button" className={uiMode === mode.id ? 'active' : ''} onClick={() => setUiMode(mode.id)}>
-            {mode.label}
-          </button>
-        ))}
-      </div>
-    )
+    return <ModeSwitch uiMode={uiMode} onChange={setUiMode} compact={compact} />
   }
 
   function AppHeader({ title, subtitle, actions }) {
