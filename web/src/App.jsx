@@ -329,6 +329,7 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState('')
   const [activeSection, setActiveSection] = useState('')
   const [activeView, setActiveView] = useState('home')
+  const [mobileAdminPanel, setMobileAdminPanel] = useState('sessions')
   const [navOpen, setNavOpen] = useState(false)
   const [showNewBulletin, setShowNewBulletin] = useState(false)
   const [newBulletinText, setNewBulletinText] = useState('')
@@ -1097,6 +1098,13 @@ export default function App() {
     { id: 'settings', label: '先生・クラス設定', adminOnly: true },
     { id: 'collab', label: '伝言板・メモ', adminOnly: false },
   ]
+  const mobileNavSections = [
+    { id: 'home', label: 'ホーム', shortLabel: 'ホーム', adminOnly: false },
+    { id: 'attendance', label: '出席', shortLabel: '出席', adminOnly: false },
+    { id: 'schedule', label: '担当表', shortLabel: '担当', adminOnly: false },
+    { id: 'mobileAdmin', label: '管理', shortLabel: '管理', adminOnly: true },
+    { id: 'mobileMemo', label: 'メモ・連絡板', shortLabel: 'メモ', adminOnly: false },
+  ]
 
   // IntersectionObserver for scroll nav active state — must be before conditional return
   useEffect(() => {
@@ -1129,7 +1137,9 @@ export default function App() {
   ), 0)
   const totalAttendanceSlots = teachers.length * editableSessions.length
   const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
-  const currentView = (!isAdmin && navSections.find((item) => item.id === activeView)?.adminOnly) ? 'home' : activeView
+  const canUseView = (sections, id) => sections.some((item) => item.id === id && (!item.adminOnly || isAdmin))
+  const currentDesktopView = canUseView(navSections, activeView) ? activeView : 'home'
+  const currentMobileView = canUseView(mobileNavSections, activeView) ? activeView : 'home'
 
   function AppHeader({ title, subtitle, actions }) {
     return (
@@ -1751,6 +1761,359 @@ export default function App() {
     )
   }
 
+  function getStatusInfo(teacherName, sessionKey) {
+    const statusId = getEffectiveStatus(teacherName, sessionKey)
+    const option = statusOptions.find((item) => item.id === statusId)
+    return {
+      id: statusId,
+      label: option?.label ?? statusId,
+      behavior: option?.behavior ?? 'no',
+    }
+  }
+
+  function statusTone(behavior) {
+    if (behavior === 'yes') return 'yes'
+    if (behavior === 'maybe' || behavior === 'maybe_meeting') return 'maybe'
+    if (behavior === 'meeting_only') return 'meeting'
+    return 'no'
+  }
+
+  function sessionTypeLabel(session) {
+    if (session.closed) return '休み'
+    if (session.meeting) return '例会'
+    return '通常'
+  }
+
+  function assignedClassesFor(session, teacherName) {
+    return Object.entries(session.assignments || {})
+      .filter(([, assignedTeacher]) => assignedTeacher === teacherName)
+      .map(([className]) => className)
+  }
+
+  function MobileHeader({ title, subtitle }) {
+    return (
+      <header className="mobile-header">
+        <div>
+          <p className="mobile-kicker">Waon Rotation</p>
+          <h1>{title}</h1>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        <button type="button" className="mobile-user-chip" onClick={switchIdentity}>
+          <strong>{identity}</strong>
+          <span>{isAdmin ? '管理者' : '本人'}</span>
+        </button>
+      </header>
+    )
+  }
+
+  function MobileHomeView() {
+    const nextSession = schedule.find((session) => !session.closed) ?? schedule[0]
+    const substituteCount = nextSession
+      ? teachers.filter((teacher) => {
+          const assigned = assignedClassesFor(nextSession, teacher.name).length > 0
+          const tone = statusTone(getStatusInfo(teacher.name, nextSession.key).behavior)
+          return !assigned && (tone === 'yes' || tone === 'maybe')
+        }).length
+      : 0
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" />
+        <div className="mobile-metrics">
+          <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${sessionTypeLabel(nextSession)}` : 'なし'}</strong></div>
+          <div><span>出席入力</span><strong>{explicitAttendanceCount}/{totalAttendanceSlots}</strong></div>
+          <div className={unassignedCount > 0 ? 'is-warn' : 'is-ok'}><span>未分配</span><strong>{unassignedCount}</strong></div>
+          <div><span>代替候補</span><strong>{substituteCount}</strong></div>
+        </div>
+        <div className="mobile-quick-actions">
+          <button type="button" onClick={copyLineText}>LINEコピー</button>
+          <button type="button" onClick={() => setActiveView('schedule')}>担当表を見る</button>
+          <button type="button" onClick={() => setActiveView('attendance')}>出席入力</button>
+        </div>
+        <section className="mobile-card-list">
+          <h2>今月の回</h2>
+          {schedule.map((session) => {
+            const counts = teachers.reduce((acc, teacher) => {
+              const tone = statusTone(getStatusInfo(teacher.name, session.key).behavior)
+              acc[tone] = (acc[tone] ?? 0) + 1
+              return acc
+            }, {})
+            return (
+              <article key={session.key} className="mobile-session-row">
+                <div>
+                  <strong>{session.label}</strong>
+                  <span>{sessionTypeLabel(session)}</span>
+                </div>
+                <div className="mobile-mini-statuses">
+                  <span className="status-dot yes">○{counts.yes ?? 0}</span>
+                  <span className="status-dot maybe">△{counts.maybe ?? 0}</span>
+                  <span className="status-dot no">×{counts.no ?? 0}</span>
+                </div>
+              </article>
+            )
+          })}
+        </section>
+      </section>
+    )
+  }
+
+  function MobileAttendanceView() {
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title="出席入力" subtitle={isAdmin ? '先生を切り替えて入力できます' : '自分の出席だけ入力できます'} />
+        {isAdmin ? (
+          <div className="mobile-chip-scroll">
+            {teachers.map((teacher) => (
+              <button key={teacher.name} type="button" className={teacher.name === effectiveTeacher ? 'active' : ''} onClick={() => handleSelectTeacher(teacher.name)}>
+                {teacher.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="mobile-card-list">
+          {sessions.map((session) => {
+            const status = getStatusInfo(effectiveTeacher, session.key)
+            const disabled = session.closed || isMonthLocked
+            return (
+              <article key={session.key} className={`mobile-attendance-card ${disabled ? 'is-disabled' : ''}`}>
+                <div className="mobile-card-head">
+                  <div>
+                    <strong>{session.label}</strong>
+                    <span>{sessionTypeLabel(session)}</span>
+                  </div>
+                  <span className={`mobile-status-pill ${statusTone(status.behavior)}`}>{status.label}</span>
+                </div>
+                {memos[session.key] ? <p className="mobile-card-note">{memos[session.key]}</p> : null}
+                <div className="mobile-status-grid">
+                  {statusOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={status.id === option.id ? 'active' : ''}
+                      disabled={disabled}
+                      onClick={() => handleStatusChange(session.key, option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {statusTone(status.behavior) === 'maybe' ? <p className="mobile-help-text">代替候補として担当表に表示されます。</p> : null}
+              </article>
+            )
+          })}
+        </div>
+      </section>
+    )
+  }
+
+  function MobileScheduleView() {
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title="担当表" subtitle="担当なしの先生も状態を表示します" />
+        <div className="mobile-quick-actions">
+          <button type="button" onClick={copyLineText}>LINEコピー</button>
+          <button type="button" onClick={exportHtmlTable}>HTML出力</button>
+        </div>
+        <div className="mobile-card-list">
+          {schedule.map((session) => (
+            <article key={session.key} className={`mobile-schedule-card ${session.closed ? 'is-disabled' : ''}`}>
+              <div className="mobile-card-head">
+                <div>
+                  <strong>{session.label}</strong>
+                  <span>{sessionTypeLabel(session)}</span>
+                </div>
+                {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未分配</span> : <span className="mobile-status-pill yes">OK</span>}
+              </div>
+              {session.closed ? (
+                <p className="mobile-card-note">わをん休み</p>
+              ) : (
+                <>
+                  <div className="mobile-assignment-list">
+                    {Object.entries(session.assignments || {}).map(([className, teacherName]) => (
+                      <div key={`${session.key}-${className}`}>
+                        <span>{className}</span>
+                        <strong>{teacherName}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mobile-teacher-status-table">
+                    <h3>出席状態・代替候補</h3>
+                    {teachers.map((teacher) => {
+                      const classes = assignedClassesFor(session, teacher.name)
+                      const status = getStatusInfo(teacher.name, session.key)
+                      const tone = statusTone(status.behavior)
+                      const canSubstitute = classes.length === 0 && (tone === 'yes' || tone === 'maybe')
+                      return (
+                        <div key={`${session.key}-${teacher.name}`} className={canSubstitute ? 'is-candidate' : ''}>
+                          <strong>{teacher.name}</strong>
+                          <span className={`mobile-status-pill ${tone}`}>{status.label}</span>
+                          <span>{classes.length > 0 ? classes.join(' / ') : '担当なし'}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  function MobileAdminView() {
+    const adminPanels = [
+      { id: 'sessions', title: '各回設定', desc: '休み・例会・開講クラス・手動担当' },
+      { id: 'settings', title: '先生・クラス設定', desc: '担当可能クラスと既定出欠' },
+      { id: 'statuses', title: '状態マスタ', desc: '○ △ △・会議○ × 例会のみ' },
+      { id: 'archive', title: 'アーカイブ', desc: '確定済み担当表' },
+    ]
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title="管理" subtitle="各回設定と先生設定の入口" />
+        <div className="mobile-admin-grid">
+          {adminPanels.map((panel) => (
+            <button key={panel.id} type="button" className={mobileAdminPanel === panel.id ? 'active' : ''} onClick={() => setMobileAdminPanel(panel.id)}>
+              <strong>{panel.title}</strong>
+              <span>{panel.desc}</span>
+            </button>
+          ))}
+        </div>
+        {mobileAdminPanel === 'sessions' ? (
+          <section className="mobile-card-list">
+            <h2>各回設定</h2>
+            {sessions.map((session) => {
+              const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
+              const classes = getSessionClasses(session)
+              return (
+                <article key={session.key} className="mobile-admin-card">
+                  <div className="mobile-card-head">
+                    <div><strong>{session.label}</strong><span>{sessionTypeLabel(session)}</span></div>
+                    <select value={type} onChange={(e) => setSessionType(session.key, e.target.value)} disabled={!canEditAdmin}>
+                      {sessionTypeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                  </div>
+                  {!session.closed ? (
+                    <>
+                      <input value={session.specialNote || ''} placeholder="特別連絡" onChange={(e) => setSessionSpecialNote(session.key, e.target.value)} disabled={!canEditAdmin} />
+                      <div className="mobile-class-chip-wrap">
+                        {allClasses.map((cls) => (
+                          <ClassChip key={cls} label={cls} checked={classes.includes(cls)} onChange={(e) => toggleSessionClass(session, cls, e.target.checked)} disabled={!canEditAdmin} />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                </article>
+              )
+            })}
+          </section>
+        ) : null}
+        {mobileAdminPanel === 'settings' ? (
+          <section className="mobile-card-list">
+            <h2>先生・クラス設定</h2>
+            {teachers.map((teacher, idx) => (
+              <article key={`${teacher.name}-mobile`} className="mobile-admin-card">
+                <input value={teacher.name} onChange={(e) => updateTeacher(idx, 'name', e.target.value)} disabled={!canEditAdmin} />
+                <select value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)} disabled={!canEditAdmin}>
+                  {statusOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+                <div className="mobile-class-chip-wrap">
+                  {allClasses.map((cls) => (
+                    <ClassChip key={cls} label={cls} checked={teacher.classes.includes(cls)} onChange={(e) => toggleTeacherClass(idx, cls, e.target.checked)} disabled={!canEditAdmin} />
+                  ))}
+                </div>
+              </article>
+            ))}
+          </section>
+        ) : null}
+        {mobileAdminPanel === 'statuses' ? (
+          <section className="mobile-card-list">
+            <h2>状態マスタ</h2>
+            {statusOptions.map((option, idx) => {
+              const isBuiltIn = ['yes', 'maybe', 'no', 'meeting_only'].includes(option.id)
+              return (
+                <article key={option.id} className="mobile-admin-card">
+                  {isBuiltIn ? <strong>{option.label}</strong> : <input value={option.label} onChange={(e) => updateStatusOption(idx, 'label', e.target.value)} disabled={!canEditAdmin} />}
+                  <select value={option.behavior} onChange={(e) => updateStatusOption(idx, 'behavior', e.target.value)} disabled={!canEditAdmin || isBuiltIn}>
+                    {BEHAVIORS.map((behavior) => <option key={behavior.value} value={behavior.value}>{behavior.label}</option>)}
+                  </select>
+                </article>
+              )
+            })}
+          </section>
+        ) : null}
+        {mobileAdminPanel === 'archive' ? (
+          <section className="mobile-card-list">
+            <h2>アーカイブ</h2>
+            <div className="mobile-quick-actions">
+              <button type="button" onClick={finalizeMonth}>今月を確定</button>
+              <button type="button" onClick={exportMonthTable}>月表保存</button>
+              <button type="button" onClick={exportHtmlTable}>HTML出力</button>
+            </div>
+            {archiveEntries.length === 0 ? <p className="mobile-empty">まだ確定済みの月はありません。</p> : archiveEntries.map(([key, arc]) => (
+              <article key={key} className="mobile-bulletin-card">
+                <div className="mobile-card-head"><div><strong>{arc.label}</strong><span>{new Date(arc.savedAt).toLocaleDateString('ja-JP')}</span></div></div>
+                <div className="mobile-quick-actions">
+                  <button type="button" onClick={() => downloadArchive(key, arc)}>保存</button>
+                  <button type="button" onClick={() => deleteArchive(key)}>削除</button>
+                </div>
+              </article>
+            ))}
+          </section>
+        ) : null}
+        <section className="mobile-card-list">
+          <h2>担当可能クラス</h2>
+          <div className="mobile-capability-preview">
+            {teachers.slice(0, 6).map((teacher) => (
+              <div key={teacher.name}>
+                <strong>{teacher.name}</strong>
+                <span>{allClasses.map((cls) => `${teacher.classes.includes(cls) ? '○' : '-'} ${cls}`).join('  ')}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </section>
+    )
+  }
+
+  function MobileMemoView() {
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title="メモ・連絡板" subtitle="連絡、個人メモ、例会メモ" />
+        <section className="mobile-card-list">
+          <div className="mobile-section-title">
+            <h2>連絡板</h2>
+            <button type="button" onClick={() => setShowNewBulletin(true)}>追加</button>
+          </div>
+          {showNewBulletin ? (
+            <article className="mobile-memo-compose">
+              <textarea value={newBulletinText} onChange={(e) => setNewBulletinText(e.target.value)} placeholder="連絡事項を書く..." rows={4} />
+              <div>
+                <button type="button" onClick={() => { setShowNewBulletin(false); setNewBulletinText('') }}>キャンセル</button>
+                <button type="button" onClick={createBulletin} disabled={!newBulletinText.trim()}>投稿</button>
+              </div>
+            </article>
+          ) : null}
+          {sortedBulletin.length === 0 ? <p className="mobile-empty">まだ連絡はありません。</p> : sortedBulletin.map((post) => (
+            <article key={post.id} className="mobile-bulletin-card">
+              <div className="mobile-card-head">
+                <div><strong>{post.author}</strong><span>{new Date(post.updatedAt).toLocaleDateString('ja-JP')}</span></div>
+                <span className={`mobile-status-pill ${post.important ? 'maybe' : 'yes'}`}>{post.important ? '重要' : '通常'}</span>
+              </div>
+              <p>{post.message}</p>
+              <button type="button" className="mobile-confirm-btn" onClick={() => toggleConfirmBulletin(post.id)}>
+                確認 {Array.isArray(post.confirmedBy) ? post.confirmedBy.length : 0}
+              </button>
+            </article>
+          ))}
+        </section>
+        <section className="mobile-card-list">
+          <h2>自分メモ</h2>
+          <textarea className="mobile-textarea" value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモ..." rows={5} />
+        </section>
+      </section>
+    )
+  }
+
   const views = {
     home: <HomeView />,
     attendance: <AttendanceView />,
@@ -1759,10 +2122,17 @@ export default function App() {
     settings: <SettingsView />,
     collab: <CollabView />,
   }
+  const mobileViews = {
+    home: <MobileHomeView />,
+    attendance: <MobileAttendanceView />,
+    schedule: <MobileScheduleView />,
+    mobileAdmin: <MobileAdminView />,
+    mobileMemo: <MobileMemoView />,
+  }
 
   return (
     <div className="page" style={{ '--font-scale': textScale / 100 }}>
-      <aside className="app-sidebar" aria-label="メインナビゲーション">
+      <aside className="app-sidebar desktop-only" aria-label="メインナビゲーション">
         <div className="sidebar-brand">
           <span className="brand-mark">W</span>
           <div>
@@ -1775,7 +2145,7 @@ export default function App() {
             <button
               key={section.id}
               type="button"
-              className={`sidebar-link ${currentView === section.id ? 'sidebar-link-active' : ''}`}
+              className={`sidebar-link ${currentDesktopView === section.id ? 'sidebar-link-active' : ''}`}
               onClick={() => setActiveView(section.id)}
             >
               <span className="sidebar-index">{String(index + 1).padStart(2, '0')}</span>
@@ -1798,7 +2168,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="app-main">
+      <main className="app-main desktop-only">
         {isMonthLocked && (
           <section className="panel lock-banner">
             <div className="lock-banner-inner">
@@ -1807,7 +2177,29 @@ export default function App() {
             {isAdmin ? <button type="button" className="ghost-btn" onClick={unlockMonth}>ロック解除</button> : null}
           </section>
         )}
-        {views[currentView]}
+        {views[currentDesktopView]}
+      </main>
+
+      <main className="mobile-app-shell">
+        {isMonthLocked && (
+          <section className="mobile-lock-banner">
+            <span>確定済み</span>
+            {isAdmin ? <button type="button" onClick={unlockMonth}>解除</button> : null}
+          </section>
+        )}
+        {mobileViews[currentMobileView]}
+        <nav className="mobile-bottom-nav" aria-label="モバイルナビゲーション">
+          {mobileNavSections.filter((s) => !s.adminOnly || isAdmin).map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={currentMobileView === section.id ? 'active' : ''}
+              onClick={() => setActiveView(section.id)}
+            >
+              <span>{section.shortLabel}</span>
+            </button>
+          ))}
+        </nav>
       </main>
     </div>
   )

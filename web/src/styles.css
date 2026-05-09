@@ -1973,6 +1973,478 @@ textarea::placeholder {
   margin-top: var(--space-4);
 }
 
+.mobile-app-shell {
+  display: none;
+}
+
+.mobile-screen {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  padding-bottom: 92px;
+}
+
+.mobile-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.mobile-header h1 {
+  margin: 2px 0 4px;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.mobile-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.mobile-kicker {
+  color: var(--primary) !important;
+  font-size: 0.74rem !important;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.mobile-user-chip,
+.mobile-bottom-nav button,
+.mobile-quick-actions button,
+.mobile-chip-scroll button,
+.mobile-status-grid button,
+.mobile-admin-grid button,
+.mobile-section-title button,
+.mobile-confirm-btn,
+.mobile-lock-banner button,
+.mobile-memo-compose button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 900;
+}
+
+.mobile-app-shell,
+.mobile-screen,
+.mobile-header,
+.mobile-card-list,
+.mobile-session-row,
+.mobile-card-head,
+.mobile-quick-actions,
+.mobile-bottom-nav,
+.mobile-quick-actions button,
+.mobile-bottom-nav button,
+.mobile-status-grid button,
+.mobile-admin-grid button {
+  min-width: 0;
+}
+
+.mobile-user-chip {
+  display: grid;
+  gap: 2px;
+  min-width: 78px;
+  min-height: 44px;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.mobile-user-chip span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.mobile-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mobile-metrics > div,
+.mobile-session-row,
+.mobile-attendance-card,
+.mobile-schedule-card,
+.mobile-bulletin-card,
+.mobile-memo-compose,
+.mobile-card-list,
+.mobile-capability-preview,
+.mobile-textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.mobile-metrics > div {
+  min-height: 78px;
+  padding: 12px;
+}
+
+.mobile-metrics span,
+.mobile-session-row span,
+.mobile-card-head span,
+.mobile-card-note,
+.mobile-help-text,
+.mobile-admin-grid span,
+.mobile-capability-preview span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.mobile-metrics strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.12rem;
+}
+
+.mobile-metrics .is-ok {
+  border-color: var(--success);
+  background: var(--success-soft);
+}
+
+.mobile-metrics .is-warn {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.mobile-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-quick-actions button {
+  min-height: 42px;
+  padding: 0 8px;
+  color: var(--primary-strong);
+  white-space: normal;
+}
+
+.mobile-card-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.mobile-card-list > h2,
+.mobile-section-title h2,
+.mobile-teacher-status-table h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.mobile-session-row,
+.mobile-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.mobile-session-row {
+  min-height: 58px;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  box-shadow: none;
+}
+
+.mobile-session-row strong,
+.mobile-session-row span,
+.mobile-card-head strong,
+.mobile-card-head span {
+  display: block;
+}
+
+.mobile-mini-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.status-dot,
+.mobile-status-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.status-dot.yes,
+.mobile-status-pill.yes {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.status-dot.maybe,
+.mobile-status-pill.maybe {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.status-dot.no,
+.mobile-status-pill.no {
+  background: var(--surface-muted);
+  color: var(--faint);
+}
+
+.mobile-status-pill.meeting {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.mobile-chip-scroll {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+}
+
+.mobile-chip-scroll button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.mobile-chip-scroll button.active,
+.mobile-status-grid button.active,
+.mobile-bottom-nav button.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.mobile-attendance-card,
+.mobile-schedule-card,
+.mobile-bulletin-card,
+.mobile-memo-compose {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.mobile-attendance-card.is-disabled,
+.mobile-schedule-card.is-disabled {
+  background: var(--surface-muted);
+}
+
+.mobile-card-note,
+.mobile-help-text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.mobile-help-text {
+  color: var(--warning);
+  font-weight: 800;
+}
+
+.mobile-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-status-grid button {
+  min-height: 42px;
+  padding: 0 8px;
+}
+
+.mobile-assignment-list {
+  display: grid;
+  gap: 6px;
+}
+
+.mobile-assignment-list div,
+.mobile-teacher-status-table div,
+.mobile-capability-preview div {
+  display: grid;
+  grid-template-columns: minmax(74px, 0.9fr) minmax(0, 1.6fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.mobile-assignment-list div:last-child,
+.mobile-teacher-status-table div:last-child,
+.mobile-capability-preview div:last-child {
+  border-bottom: 0;
+}
+
+.mobile-assignment-list span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.mobile-teacher-status-table {
+  display: grid;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.mobile-teacher-status-table div {
+  grid-template-columns: 62px 72px minmax(0, 1fr);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.mobile-teacher-status-table div.is-candidate {
+  background: var(--warning-soft);
+}
+
+.mobile-admin-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.mobile-admin-grid button {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px;
+  text-align: left;
+}
+
+.mobile-admin-grid button.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.mobile-admin-grid strong,
+.mobile-admin-grid span {
+  display: block;
+}
+
+.mobile-admin-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.mobile-admin-card input,
+.mobile-admin-card select {
+  min-height: 40px;
+}
+
+.mobile-class-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mobile-capability-preview {
+  padding: 4px 12px;
+  box-shadow: none;
+}
+
+.mobile-capability-preview div {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.mobile-capability-preview span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-section-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.mobile-section-title button,
+.mobile-confirm-btn,
+.mobile-memo-compose button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.mobile-bulletin-card p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.mobile-confirm-btn {
+  justify-self: start;
+  color: var(--primary-strong);
+}
+
+.mobile-memo-compose textarea,
+.mobile-textarea {
+  width: 100%;
+  min-height: 112px;
+  padding: 12px;
+  resize: vertical;
+}
+
+.mobile-memo-compose div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mobile-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.mobile-lock-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 900;
+}
+
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  width: calc(100vw - 20px);
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.mobile-bottom-nav button {
+  min-height: 42px;
+  padding: 0 2px;
+  font-size: 0.78rem;
+  white-space: normal;
+}
+
 @media (max-width: 1180px) {
   .dashboard-grid,
   .collab-grid {
@@ -1986,6 +2458,31 @@ textarea::placeholder {
 }
 
 @media (max-width: 760px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .page {
+    display: block;
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-app-shell {
+    display: block;
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
+    min-height: 100vh;
+    padding: 14px 12px 0;
+  }
+
   .screen-header,
   .screen-header-side {
     flex-direction: column;
