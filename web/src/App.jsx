@@ -257,7 +257,7 @@ function ScrollNav({ sections, activeSection, navOpen, onToggle }) {
 }
 
 function IdentityGate({ teachers, onSelect }) {
-  const previewSections = ['月を選ぶ', '各回設定', '出席入力', '担当表', '伝言板', 'メモ', '設定']
+  const previewSections = ['ホーム', '出席入力', '担当表', '伝言板・メモ']
   return (
     <div className="page">
       <aside className="app-sidebar" aria-label="メインナビゲーション">
@@ -277,8 +277,8 @@ function IdentityGate({ teachers, onSelect }) {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <span>共有ローテーション表</span>
-          <strong>名前を選択</strong>
+          <span>ダッシュボード</span>
+          <strong>ログイン待ち</strong>
         </div>
       </aside>
 
@@ -286,13 +286,13 @@ function IdentityGate({ teachers, onSelect }) {
       <section className="hero identity-hero">
         <div>
           <p className="eyebrow">Waon Rotation</p>
-          <h1>まず自分の名前を選んでください</h1>
-          <p className="lead">先生本人は自分の出席だけ編集できます。裴さんは管理者として全体を編集できます。</p>
+          <h1>新しい担当表ワークスペースへ</h1>
+          <p className="lead">左の目次で6つの画面に分け、出席、担当表、各回設定、先生ごとの担当可能クラスを見やすく整理します。</p>
         </div>
       </section>
 
       <section className="panel identity-panel">
-        <h2 className="panel-title">あなたは誰ですか？</h2>
+        <h2 className="panel-title">まず自分の名前を選んでください</h2>
         <div className="identity-grid">
           {teachers.map((teacher) => (
             <button
@@ -328,6 +328,7 @@ export default function App() {
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [copiedLink, setCopiedLink] = useState('')
   const [activeSection, setActiveSection] = useState('')
+  const [activeView, setActiveView] = useState('home')
   const [navOpen, setNavOpen] = useState(false)
   const [showNewBulletin, setShowNewBulletin] = useState(false)
   const [newBulletinText, setNewBulletinText] = useState('')
@@ -1087,26 +1088,15 @@ export default function App() {
     })
   }
 
-  // ── Nav sections (computed before gate so hook below can reference it) ────────
-  const navSections = isAdmin
-    ? [
-        { id: 'sec-month',      label: '月を選ぶ' },
-        { id: 'sec-sessions',   label: '各回設定' },
-        { id: 'sec-special',    label: '特殊設定' },
-        { id: 'sec-settings',   label: 'クラス設定' },
-        { id: 'sec-teachers',   label: '先生設定' },
-        { id: 'sec-attendance', label: '出席入力' },
-        { id: 'sec-schedule',   label: '担当表' },
-        { id: 'sec-bulletin',   label: '伝言板' },
-        { id: 'sec-memos',      label: 'メモ' },
-        { id: 'sec-archive',    label: '保存済み' },
-      ]
-    : [
-        { id: 'sec-attendance', label: '出席入力' },
-        { id: 'sec-schedule',   label: '担当表' },
-        { id: 'sec-bulletin',   label: '伝言板' },
-        { id: 'sec-memos',      label: 'メモ' },
-      ]
+  // ── Six-screen app navigation ────────────────────────────────────────────────
+  const navSections = [
+    { id: 'home', label: 'ホーム', adminOnly: false },
+    { id: 'attendance', label: '出席入力', adminOnly: false },
+    { id: 'schedule', label: '担当表', adminOnly: false },
+    { id: 'sessions', label: '各回設定', adminOnly: true },
+    { id: 'settings', label: '先生・クラス設定', adminOnly: true },
+    { id: 'collab', label: '伝言板・メモ', adminOnly: false },
+  ]
 
   // IntersectionObserver for scroll nav active state — must be before conditional return
   useEffect(() => {
@@ -1139,6 +1129,636 @@ export default function App() {
   ), 0)
   const totalAttendanceSlots = teachers.length * editableSessions.length
   const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
+  const currentView = (!isAdmin && navSections.find((item) => item.id === activeView)?.adminOnly) ? 'home' : activeView
+
+  function AppHeader({ title, subtitle, actions }) {
+    return (
+      <header className="screen-header">
+        <div>
+          <p className="eyebrow">Waon Rotation</p>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
+        </div>
+        <div className="screen-header-side">
+          <div className={`identity-badge ${isAdmin ? 'identity-badge-admin' : ''}`}>
+            <strong>{identity}</strong>
+            <span>{isAdmin ? '管理者' : '本人入力'}</span>
+          </div>
+          <div className={`cloud-status cloud-status-${cloudStatus}`}>
+            <strong>Cloud Sync</strong>
+            <span>{cloudMessage}</span>
+          </div>
+          {actions}
+        </div>
+      </header>
+    )
+  }
+
+  function MonthControls() {
+    return (
+      <div className="control-grid">
+        <label className="field-block">
+          <span>年</span>
+          <input type="number" value={year} min={2020} max={2040} onChange={(e) => { const v = parseInt(e.target.value, 10); if (v >= 2020 && v <= 2040) setYear(v) }} />
+        </label>
+        <label className="field-block">
+          <span>月</span>
+          <select value={month} onChange={(e) => setMonth(parseInt(e.target.value, 10))}>
+            {MONTH_JP.map((label, i) => <option key={i + 1} value={i + 1}>{label}</option>)}
+          </select>
+        </label>
+        <div className="field-block">
+          <span>&nbsp;</span>
+          <button type="button" className="ghost-btn" onClick={() => { const now = new Date(); setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }}>今月に戻る</button>
+        </div>
+        <label className="field-block field-wide">
+          <span>文字サイズ</span>
+          <div className="inline-field">
+            <input type="number" value={textScaleDraft} min={MIN_TEXT_SCALE} max={MAX_TEXT_SCALE} step={5} onChange={(e) => setTextScaleDraft(e.target.value)} onBlur={applyTextScaleDraft} />
+            <button type="button" className="ghost-btn" onClick={applyTextScaleDraft}>適用</button>
+            <button type="button" className="ghost-btn" onClick={resetTextScale}>100%</button>
+            <button type="button" className="primary-btn" onClick={saveDefaultTextScale}>既定に保存</button>
+          </div>
+        </label>
+      </div>
+    )
+  }
+
+  function ExportActions() {
+    if (!isAdmin) return null
+    return (
+      <div className="action-row">
+        <button type="button" className="ghost-btn" onClick={copyLineText}>LINE用テキスト</button>
+        <button type="button" className="ghost-btn" onClick={exportMonthTable}>月表を保存</button>
+        <button type="button" className="ghost-btn" onClick={exportHtmlTable}>HTML表</button>
+        <button type="button" className={isMonthLocked ? 'success-btn' : 'primary-btn'} onClick={isMonthLocked ? unlockMonth : finalizeMonth}>
+          {isMonthLocked ? '確定済み' : '今月を確定'}
+        </button>
+        {exportMessage ? <span className="inline-message">{exportMessage}</span> : null}
+      </div>
+    )
+  }
+
+  function HomeView() {
+    return (
+      <section id="home" className="screen-view">
+        <AppHeader
+          title={`${year}年${MONTH_JP[month - 1]} 月概要`}
+          subtitle="出席状況と担当表の状態を確認します。"
+          actions={<button type="button" className="ghost-btn" onClick={switchIdentity}>名前を選び直す</button>}
+        />
+        <MonthControls />
+        <div className="metric-grid">
+          <div className="metric-card"><span>開催日</span><strong>{editableSessions.length}回</strong></div>
+          <div className="metric-card"><span>出席入力</span><strong>{teachers.filter(t => editableSessions.some(s => attendance[t.name]?.[s.key] !== undefined)).length}/{teachers.length}人</strong></div>
+          <div className={`metric-card ${unassignedCount > 0 ? 'metric-warn' : 'metric-ok'}`}><span>未担当</span><strong>{unassignedCount}</strong></div>
+          <div className="metric-card"><span>例会</span><strong>{meetingCount}</strong></div>
+        </div>
+
+        <div className="dashboard-grid">
+          <section className="panel span-2">
+            <div className="panel-header">
+              <div>
+                <h2>今月の流れ</h2>
+                <p>各回の種類、出席、未担当を俯瞰します。</p>
+              </div>
+            </div>
+            <div className="session-summary-list">
+              {schedule.map((session) => (
+                <article key={session.key} className={`session-summary-card ${session.closed ? 'is-muted' : session.meeting ? 'is-info' : ''}`}>
+                  <div>
+                    <strong>{session.label}</strong>
+                    <span>{session.closed ? 'やすみ' : session.meeting ? '例会' : `${session.weekIndex}週目${session.weekIndex % 2 === 1 ? ' 王週' : ''}`}</span>
+                  </div>
+                  <div className="summary-kpis">
+                    <span>出席 {session.selectedTeachers.length}</span>
+                    <span>追加 {session.selectedMaybeTeachers.length}</span>
+                    <span className={session.unassignedClasses?.length ? 'text-danger' : ''}>未担当 {session.unassignedClasses?.length ?? 0}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <aside className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>管理者アクション</h2>
+                <p>共有、保存、確定をここから行います。</p>
+              </div>
+            </div>
+            <ExportActions />
+            {isAdmin && (
+              <div className="teacher-link-stack">
+                <h3>先生別リンク</h3>
+                {teachers.map((teacher) => (
+                  <button key={teacher.name} type="button" className="ghost-btn" onClick={() => copyTeacherLink(teacher.name)}>
+                    {copiedLink === teacher.name ? `${teacher.name} コピー済み` : teacher.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </aside>
+        </div>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>運用メモ</h2>
+              <p>自動計算が参照する重要なルールです。</p>
+            </div>
+          </div>
+          <div className="rule-grid">
+            <div className="rule-card">王週は入門を `入門(denji)` と `入門(王)` に分割できます。</div>
+            <div className="rule-card">人数不足時だけ `△` と `△・会議○` が担当候補に入ります。</div>
+            <div className="rule-card">担当可能クラスに反する割当は自動では行いません。</div>
+          </div>
+        </section>
+      </section>
+    )
+  }
+
+  function AttendanceView() {
+    const attendanceRows = teachers.map((teacher) => {
+      const entered = editableSessions.filter((session) => attendance[teacher.name]?.[session.key] !== undefined).length
+      return { teacher, entered }
+    })
+    return (
+      <section id="attendance" className="screen-view">
+        <AppHeader title="出席入力" subtitle="先生ごとの出席状態を入力します。△は人数不足時だけ担当に入ります。" />
+        <div className="dashboard-grid">
+          <section className="panel span-2">
+            {isAdmin && (
+              <>
+                <div className="chip-row">
+                  {teachers.map((teacher) => (
+                    <button key={teacher.name} type="button" className={teacher.name === effectiveTeacher ? 'chip active' : 'chip'} onClick={() => handleSelectTeacher(teacher.name)}>
+                      {teacher.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="teacher-links-row">
+                  <span className="teacher-links-hint">先生別リンク</span>
+                  {teachers.map((teacher) => (
+                    <button key={teacher.name} type="button" className="teacher-link-btn" onClick={() => copyTeacherLink(teacher.name)}>
+                      {copiedLink === teacher.name ? `${teacher.name} コピー済み` : teacher.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="panel-header">
+              <div>
+                <h2>{effectiveTeacher} さんの出席</h2>
+                <p>{isMonthLocked ? 'この月の担当表は確定済みです。' : '日付ごとに状態を選んでください。'}</p>
+              </div>
+            </div>
+            <div className="attendance-card-grid">
+              {sessions.map((session) => {
+                const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
+                const effectiveStatus = getEffectiveStatus(effectiveTeacher, session.key)
+                const isExplicit = attendance[effectiveTeacher]?.[session.key] !== undefined
+                const disabled = session.closed || isMonthLocked
+                return (
+                  <article key={session.key} className={`attendance-card attendance-card-${type} ${disabled ? 'is-disabled' : ''}`}>
+                    <div className="attendance-card-head">
+                      <div>
+                        <strong>{session.label}</strong>
+                        <span>{session.closed ? 'やすみ' : session.meeting ? '例会' : `${session.weekIndex}週目`}</span>
+                      </div>
+                      {!isExplicit && !session.closed ? <span className="status-badge">デフォルト</span> : null}
+                    </div>
+                    <div className="status-segments">
+                      {statusOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          className={effectiveStatus === option.id ? 'status-segment active' : 'status-segment'}
+                          disabled={disabled}
+                          onClick={() => handleStatusChange(session.key, option.id)}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+
+          <aside className="panel">
+            <h2>状態の意味</h2>
+            <div className="meaning-list">
+              {statusOptions.map((option) => (
+                <div key={option.id} className="meaning-item">
+                  <strong>{option.label}</strong>
+                  <span>{BEHAVIORS.find((b) => b.value === option.behavior)?.label ?? option.behavior}</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>入力状況</h2>
+              <p>誰の出席入力が残っているか確認します。</p>
+            </div>
+          </div>
+          <div className="compact-table-wrap">
+            <table className="compact-table">
+              <thead><tr><th>先生</th><th>入力済み</th><th>不足</th><th>既定出欠</th></tr></thead>
+              <tbody>
+                {attendanceRows.map(({ teacher, entered }) => (
+                  <tr key={teacher.name} className={entered === 0 ? 'row-warn' : ''}>
+                    <td>{teacher.name}</td>
+                    <td>{entered}/{editableSessions.length}</td>
+                    <td>{Math.max(0, editableSessions.length - entered)}</td>
+                    <td>{statusOptions.find((o) => o.id === teacher.defaultStatus)?.label ?? teacher.defaultStatus}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    )
+  }
+
+  function ScheduleView() {
+    return (
+      <section id="schedule" className="screen-view">
+        <AppHeader
+          title={`${year}年${MONTH_JP[month - 1]} 担当表`}
+          subtitle="出席と担当可能クラスから自動で決まった結果です。"
+          actions={<ExportActions />}
+        />
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>自動で決まった担当</h2>
+              <p>会議だけ参加する人は `会議`、不足時に追加された人は特別連絡に表示されます。</p>
+            </div>
+          </div>
+          <div className="table-wrap schedule-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="col-sticky col-head">名前</th>
+                  {sessions.map((session) => <th key={session.key}>{session.label}{session.meeting ? ' 例会' : ''}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="col-sticky td-label">特別連絡</td>
+                  {schedule.map((session) => <td key={session.key} className={session.closed ? 'td-holiday' : ''}>{session.special || ''}</td>)}
+                </tr>
+                <tr>
+                  <td className="col-sticky td-label td-unassigned-label">未担当</td>
+                  {schedule.map((session) => <td key={session.key} className={session.unassignedClasses?.length > 0 ? 'td-unassigned' : session.closed ? 'td-holiday' : ''}>{session.unassignedClasses?.join('、') || ''}</td>)}
+                </tr>
+                {teachers.map((teacher) => (
+                  <tr key={teacher.name}>
+                    <td className="col-sticky td-label">{teacher.name}</td>
+                    {schedule.map((session) => {
+                      const assigned = Object.entries(session.assignments).filter(([, assignedTeacher]) => assignedTeacher === teacher.name).map(([className]) => className).join(' / ')
+                      const atMeeting = session.meetingOnlyTeachers?.includes(teacher.name) || session.maybeMeetingTeachers?.includes(teacher.name)
+
+                      let cellClass = session.closed ? 'td-holiday' : ''
+                      let content = ''
+
+                      if (assigned) {
+                        content = assigned
+                      } else if (atMeeting) {
+                        content = <span className="table-pill info">会議</span>
+                      } else if (!session.closed) {
+                        const statusId = getEffectiveStatus(teacher.name, session.key)
+                        const statusOpt = statusOptions.find(o => o.id === statusId)
+                        const behavior = statusOpt?.behavior ?? 'no'
+                        if (behavior === 'yes') {
+                          content = '○'
+                          cellClass += ' td-status td-status-yes'
+                        } else if (behavior === 'maybe' || behavior === 'maybe_meeting') {
+                          content = '△'
+                          cellClass += ' td-status td-status-maybe'
+                        } else {
+                          content = '×'
+                          cellClass += ' td-status td-status-no'
+                        }
+                      }
+
+                      return <td key={session.key} className={cellClass.trim()}>{content}</td>
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section className="panel">
+          <h2>計算メモ</h2>
+          <div className="meaning-list horizontal">
+            <div className="meaning-item"><strong>未担当</strong><span>{unassignedCount > 0 ? `${unassignedCount} クラスあります` : '現在ありません'}</span></div>
+            <div className="meaning-item"><strong>△追加</strong><span>{schedule.flatMap((s) => s.selectedMaybeTeachers).join('、') || 'なし'}</span></div>
+            <div className="meaning-item"><strong>王週</strong><span>奇数週は入門分割候補です。</span></div>
+            <div className="meaning-item"><strong>安全</strong><span>担当可能クラスに反する割当はしません。</span></div>
+          </div>
+        </section>
+      </section>
+    )
+  }
+
+  function SessionsView() {
+    return (
+      <section id="sessions" className="screen-view">
+        <AppHeader title="各回設定" subtitle="開催日ごとに種類、開講クラス、手動担当、特別連絡を設定します。" />
+        <div className="dashboard-grid">
+          <section className="panel span-2">
+            <MonthControls />
+            <div className="session-list expanded">
+              {sessions.map((session, i) => {
+                const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
+                const classes = getSessionClasses(session)
+                const isOverridden = !!sessionClassesByMonth[monthKey]?.[session.key]
+                const isWangWeek = session.weekIndex % 2 === 1
+                return (
+                  <article key={session.key} className={`session-row session-row-${type}`}>
+                    <div className="session-row-top">
+                      <div className="session-date-info">
+                        <strong className="session-date">{session.label}</strong>
+                        <span className="session-week">{session.closed ? 'やすみ' : `${i + 1}週目${isWangWeek ? '（王週）' : ''}`}</span>
+                      </div>
+                      <select className="session-type-select" value={type} onChange={(e) => setSessionType(session.key, e.target.value)} disabled={!canEditAdmin}>
+                        {sessionTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </div>
+                    {!session.closed && (
+                      <>
+                        <div className="session-special-note-row">
+                          <span className="session-special-note-label">特別連絡</span>
+                          <input className="session-special-note-input" value={session.specialNote || ''} placeholder="特別連絡を入力..." onChange={(e) => setSessionSpecialNote(session.key, e.target.value)} disabled={!canEditAdmin} />
+                        </div>
+                        <div className="session-class-area">
+                          <div className="session-class-header">
+                            <span className="session-class-label">開講クラス</span>
+                            {isOverridden && canEditAdmin ? <button type="button" className="ghost-btn" onClick={() => resetSessionClasses(session.key)}>自動に戻す</button> : null}
+                          </div>
+                          <div className="session-class-chips">
+                            {allClasses.map((cls) => (
+                              <div key={cls} className="session-class-chip-row">
+                                <ClassChip label={cls} checked={classes.includes(cls)} onChange={(e) => toggleSessionClass(session, cls, e.target.checked)} disabled={!canEditAdmin} />
+                                <select className="manual-teacher-select" value={getManualAssignment(session, cls) ?? ''} onChange={(e) => e.target.value ? setManualAssignment(session.key, cls, e.target.value) : resetManualAssignment(session.key, cls)} disabled={!canEditAdmin}>
+                                  <option value="">auto</option>
+                                  {teachers.map((teacher) => <option key={teacher.name} value={teacher.name}>{teacher.name}</option>)}
+                                </select>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+          <aside className="panel">
+            <h2>特殊ルール</h2>
+            <div className="special-rules-list">
+              <div className="special-rule-row compact">
+                <div><strong>王さんルール</strong><p>奇数週に入門を2クラスへ分割できます。</p></div>
+                <label className="toggle-label"><input type="checkbox" checked={specialRules.wangSplit !== false} onChange={(e) => setSpecialRule('wangSplit', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span></label>
+              </div>
+              <div className="special-rule-row compact">
+                <div><strong>ランダム</strong><p>複数候補からランダムに選びます。</p></div>
+                <label className="toggle-label"><input type="checkbox" checked={specialRules.random === true} onChange={(e) => setSpecialRule('random', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span></label>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    )
+  }
+
+  function SettingsView() {
+    return (
+      <section id="settings" className="screen-view">
+        <AppHeader title="先生・クラス設定" subtitle="排班ルールの中心。先生ごとの担当可能クラスとデフォルト出欠を管理します。" actions={isAdmin ? <button type="button" className="primary-btn" onClick={addTeacher}>先生を追加</button> : null} />
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>先生の担当可能クラス</h2>
+              <p className="text-danger">担当可能でないクラスには自動割当しません。</p>
+            </div>
+          </div>
+          <div className="capability-table-wrap">
+            <table className="capability-table">
+              <thead>
+                <tr>
+                  <th>先生</th>
+                  <th>遠方</th>
+                  <th>例会配慮</th>
+                  <th>既定出欠</th>
+                  {allClasses.map((cls) => <th key={cls}>{cls}</th>)}
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teachers.map((teacher, idx) => (
+                  <tr key={`${teacher.name}-${idx}`}>
+                    <td><input value={teacher.name} ref={idx === teachers.length - 1 ? newTeacherRef : null} onChange={(e) => updateTeacher(idx, 'name', e.target.value)} disabled={!canEditAdmin} /></td>
+                    <td><input type="checkbox" checked={!!teacher.remote} onChange={(e) => updateTeacher(idx, 'remote', e.target.checked)} disabled={!canEditAdmin} /></td>
+                    <td><input type="checkbox" checked={!!teacher.skipMeeting} onChange={(e) => updateTeacher(idx, 'skipMeeting', e.target.checked)} disabled={!canEditAdmin} /></td>
+                    <td>
+                      <select value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)} disabled={!canEditAdmin}>
+                        {statusOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                      </select>
+                    </td>
+                    {allClasses.map((cls) => (
+                      <td key={cls}><input type="checkbox" checked={teacher.classes.includes(cls)} onChange={(e) => toggleTeacherClass(idx, cls, e.target.checked)} disabled={!canEditAdmin} /></td>
+                    ))}
+                    <td>
+                      <div className="mini-actions">
+                        <button type="button" className="icon-btn" disabled={!canEditAdmin || idx === 0} onClick={() => moveTeacher(idx, -1)}>↑</button>
+                        <button type="button" className="icon-btn" disabled={!canEditAdmin || idx === teachers.length - 1} onClick={() => moveTeacher(idx, 1)}>↓</button>
+                        <button type="button" className="icon-btn danger" disabled={!canEditAdmin} onClick={() => deleteTeacher(idx)}>×</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <div className="dashboard-grid">
+          <section className="panel">
+            <h2>クラス一覧</h2>
+            <p className="panel-desc">クラス名、デフォルト開講クラスを管理します。</p>
+            <div className="settings-sub-label">デフォルト開講クラス</div>
+            <div className="class-chip-row">{allClasses.map((cls) => <ClassChip key={cls} label={cls} checked={defaultClasses.includes(cls)} onChange={(e) => toggleDefaultClass(cls, e.target.checked)} disabled={!canEditAdmin} />)}</div>
+            <div className="edit-list">
+              {allClasses.map((cls, idx) => (
+                <div key={idx} className="edit-row">
+                  <input value={cls} ref={idx === allClasses.length - 1 ? newClassRef : null} onChange={(e) => renameGlobalClass(idx, e.target.value)} disabled={!canEditAdmin} />
+                  <button type="button" className="icon-btn danger" onClick={() => deleteGlobalClass(idx)} disabled={!canEditAdmin}>×</button>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="primary-btn" onClick={addGlobalClass} disabled={!canEditAdmin}>クラスを追加</button>
+          </section>
+          <section className="panel">
+            <h2>出欠ステータス</h2>
+            <p className="panel-desc">表示名と計算上の動作を管理します。</p>
+            <div className="status-edit-list">
+              {statusOptions.map((option, idx) => {
+                const isBuiltIn = ['yes', 'maybe', 'no', 'meeting_only'].includes(option.id)
+                return (
+                  <div key={option.id} className="status-edit-row">
+                    {isBuiltIn ? <span className="status-label-fixed">{option.label}</span> : <input value={option.label} ref={idx === statusOptions.length - 1 ? newStatusRef : null} onChange={(e) => updateStatusOption(idx, 'label', e.target.value)} disabled={!canEditAdmin} />}
+                    <select value={option.behavior} onChange={(e) => updateStatusOption(idx, 'behavior', e.target.value)} disabled={!canEditAdmin || isBuiltIn}>
+                      {BEHAVIORS.map((behavior) => <option key={behavior.value} value={behavior.value}>{behavior.label}</option>)}
+                    </select>
+                    {!isBuiltIn ? <button type="button" className="icon-btn danger" onClick={() => deleteStatusOption(idx)} disabled={!canEditAdmin}>×</button> : null}
+                  </div>
+                )
+              })}
+            </div>
+            <button type="button" className="primary-btn" onClick={addStatusOption} disabled={!canEditAdmin}>ステータスを追加</button>
+          </section>
+        </div>
+      </section>
+    )
+  }
+
+  function CollabView() {
+    return (
+      <section id="collab" className="screen-view">
+        <AppHeader title="伝言板・メモ・保存" subtitle="全員への連絡、個人メモ、会議記録、確定済み月の保存をまとめます。" />
+        <div className="collab-grid">
+          <section className="panel">
+            <div className="panel-header">
+              <div><h2>伝言板</h2><p>固定、重要、確認済みを管理できます。</p></div>
+              <button type="button" className="primary-btn" onClick={() => { setShowNewBulletin(true); setEditingBulletinId(null) }}>新規作成</button>
+            </div>
+            {showNewBulletin && (
+              <div className="bulletin-compose">
+                <div className="bulletin-compose-author"><span className="bulletin-author-dot" /><strong>{identity}</strong></div>
+                <textarea value={newBulletinText} onChange={(e) => setNewBulletinText(e.target.value)} placeholder="連絡事項・お知らせ・メモなど..." rows={4} autoFocus />
+                <div className="bulletin-compose-actions">
+                  <button type="button" className="ghost-btn" onClick={() => { setShowNewBulletin(false); setNewBulletinText('') }}>キャンセル</button>
+                  <button type="button" className="primary-btn" onClick={createBulletin} disabled={!newBulletinText.trim()}>確定</button>
+                </div>
+              </div>
+            )}
+            {bulletinBoard.length === 0 && !showNewBulletin ? <div className="bulletin-empty"><p>まだ伝言はありません。</p></div> : (
+              <div className="bulletin-list">
+                {sortedBulletin.map((post) => {
+                  const canEdit = isAdmin || identity === post.author
+                  const isEditing = editingBulletinId === post.id
+                  const confirmedBy = Array.isArray(post.confirmedBy) ? post.confirmedBy : []
+                  const isConfirmed = confirmedBy.includes(identity)
+                  const tier = sortedBulletin.filter((p) => !!p.pinned === !!post.pinned)
+                  const tierPos = tier.findIndex((p) => p.id === post.id)
+                  return (
+                    <article key={post.id} className={['bulletin-post', post.pinned ? 'bulletin-post-pinned' : '', post.important ? 'bulletin-post-important' : ''].filter(Boolean).join(' ')}>
+                      <div className="bulletin-post-header">
+                        <div className="bulletin-post-meta">
+                          <strong>{post.author}</strong>
+                          {post.pinned ? <span className="bulletin-badge-pin">固定</span> : null}
+                          {post.important ? <span className="bulletin-badge-important">重要</span> : null}
+                          <span className="bulletin-post-date">{new Date(post.updatedAt).toLocaleDateString('ja-JP')}</span>
+                        </div>
+                        <div className="bulletin-post-btns">
+                          <button type="button" className="icon-btn" disabled={tierPos === 0} onClick={() => moveBulletin(post.id, -1)}>↑</button>
+                          <button type="button" className="icon-btn" disabled={tierPos === tier.length - 1} onClick={() => moveBulletin(post.id, 1)}>↓</button>
+                          <button type="button" className={isConfirmed ? 'success-btn' : 'ghost-btn'} onClick={() => toggleConfirmBulletin(post.id)}>確認 {confirmedBy.length}</button>
+                          <button type="button" className="ghost-btn" onClick={() => toggleImportantBulletin(post.id)}>重要</button>
+                          <button type="button" className="ghost-btn" onClick={() => togglePinBulletin(post.id)}>固定</button>
+                          {canEdit ? <button type="button" className="ghost-btn" onClick={() => startEditBulletin(post)}>編集</button> : null}
+                          {canEdit ? <button type="button" className="danger-btn" onClick={() => deleteBulletin(post.id)}>削除</button> : null}
+                        </div>
+                      </div>
+                      {isEditing ? (
+                        <div className="bulletin-edit-area">
+                          <textarea value={editingBulletinText} onChange={(e) => setEditingBulletinText(e.target.value)} rows={4} autoFocus />
+                          <div className="bulletin-compose-actions">
+                            <button type="button" className="ghost-btn" onClick={cancelEditBulletin}>キャンセル</button>
+                            <button type="button" className="primary-btn" onClick={saveEditBulletin} disabled={!editingBulletinText.trim()}>確定</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="bulletin-post-body">{post.message}</p>
+                          <div className="bulletin-confirmed-row"><span className="bulletin-confirmed-label">確認済み</span><span>{confirmedBy.length > 0 ? confirmedBy.join('、') : 'まだありません'}</span></div>
+                        </>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="panel">
+            <h2>メモ</h2>
+            <div className="my-memo-card">
+              <div className="my-memo-header"><div><h3>My Memo</h3><p>{identity} さん用の個人メモです。</p></div></div>
+              <textarea value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモを書けます..." rows={5} />
+            </div>
+            {schedule.filter((s) => s.meeting && !s.closed).map((session) => (
+              <div key={session.key} className="meeting-note-card">
+                <strong>{session.label} 会議記録</strong>
+                <textarea value={meetingNotes[session.key] ?? ''} onChange={(e) => setMeetingNote(session.key, e.target.value)} placeholder="議事録・決定事項・次回への伝達事項" rows={5} />
+              </div>
+            ))}
+            <div className="memo-list compact">
+              {schedule.map((session) => (
+                <article key={session.key} className={`memo-card ${session.closed ? 'memo-holiday' : session.meeting ? 'memo-meeting' : ''}`}>
+                  <h3>{session.label}</h3>
+                  {session.closed ? <p className="memo-auto">わをん休み</p> : (
+                    <>
+                      <p className="memo-auto">来る人: {session.selectedTeachers.join('、') || 'なし'}</p>
+                      <p className="memo-auto">例会のみ: {session.meetingOnlyTeachers.join('、') || 'なし'}</p>
+                      {session.selectedMaybeTeachers.length > 0 ? <p className="memo-auto">△から追加: {session.selectedMaybeTeachers.join('、')}</p> : null}
+                      {session.unassignedClasses?.length > 0 ? <p className="memo-warn">未担当: {session.unassignedClasses.join('、')}</p> : null}
+                    </>
+                  )}
+                  <textarea value={memos[session.key] ?? ''} onChange={(e) => setMemo(session.key, e.target.value)} placeholder="自由に書き込めます..." rows={3} />
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <aside className="panel">
+            <h2>保存済み</h2>
+            <ExportActions />
+            <div className="archive-list">
+              {archiveEntries.length === 0 ? <p className="empty-msg">まだ確定済みの月はありません。</p> : archiveEntries.map(([key, arc]) => (
+                <div key={key} className="archive-row">
+                  <div className="archive-row-info"><strong>{arc.label}</strong><span>確定日: {new Date(arc.savedAt).toLocaleDateString('ja-JP')}</span></div>
+                  <div className="archive-actions">
+                    <button type="button" className="ghost-btn" onClick={() => downloadArchive(key, arc)}>ダウンロード</button>
+                    <button type="button" className="danger-btn" onClick={() => deleteArchive(key)}>削除</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </section>
+    )
+  }
+
+  const views = {
+    home: <HomeView />,
+    attendance: <AttendanceView />,
+    schedule: <ScheduleView />,
+    sessions: <SessionsView />,
+    settings: <SettingsView />,
+    collab: <CollabView />,
+  }
 
   return (
     <div className="page" style={{ '--font-scale': textScale / 100 }}>
@@ -1151,24 +1771,27 @@ export default function App() {
           </div>
         </div>
         <nav className="sidebar-nav">
-          {navSections.map((section, index) => (
+          {navSections.filter((s) => !s.adminOnly || isAdmin).map((section, index) => (
             <button
               key={section.id}
               type="button"
-              className={`sidebar-link ${activeSection === section.id ? 'sidebar-link-active' : ''}`}
-              onClick={() => {
-                const el = document.getElementById(section.id)
-                if (el) {
-                  const top = el.getBoundingClientRect().top + window.pageYOffset - 18
-                  window.scrollTo({ top, behavior: 'smooth' })
-                }
-              }}
+              className={`sidebar-link ${currentView === section.id ? 'sidebar-link-active' : ''}`}
+              onClick={() => setActiveView(section.id)}
             >
               <span className="sidebar-index">{String(index + 1).padStart(2, '0')}</span>
               <span>{section.label}</span>
             </button>
           ))}
         </nav>
+        <div className="sidebar-theme">
+          {[
+            { id: 'clay', label: '☀️' },
+            { id: 'night', label: '🌙' },
+            { id: 'sakura', label: '🌸' },
+          ].map((t) => (
+            <button key={t.id} type="button" className={`theme-pill${theme === t.id ? ' theme-pill-active' : ''}`} onClick={() => setTheme(t.id)}>{t.label}</button>
+          ))}
+        </div>
         <div className="sidebar-footer">
           <span>{year}年 {MONTH_JP[month - 1]}</span>
           <strong>{identity}</strong>
@@ -1176,479 +1799,15 @@ export default function App() {
       </aside>
 
       <main className="app-main">
-      {/* ── Hero ── */}
-      <section className="hero">
-        <div className="hero-topline">
-          <div>
-            <p className="eyebrow">Waon Rotation</p>
-            <h1>出席を入れると自動で担当を決めるサイト</h1>
-            <p className="lead">{isAdmin ? '裴さんは全体設定・全員の出席・メモ・導出ができます。' : '先生本人は自分の出席だけ編集できます。全体表は閲覧できます。'}</p>
-            <div className="theme-switcher" aria-label="テーマ切替">
-              {[
-                { id: 'clay', label: '標準' },
-                { id: 'sakura', label: '淡色' },
-                { id: 'night', label: '夜間' },
-                { id: 'easy', label: '見やすい' },
-              ].map((t) => (
-                <button key={t.id} type="button" className={`theme-btn${theme === t.id ? ' theme-btn-active' : ''}`} onClick={() => setTheme(t.id)}>{t.label}</button>
-              ))}
+        {isMonthLocked && (
+          <section className="panel lock-banner">
+            <div className="lock-banner-inner">
+              <p>{year}年{MONTH_JP[month - 1]}の担当表は確定済みです。編集するには管理者がロックを解除してください。</p>
             </div>
-          </div>
-          <div className="identity-badge-wrap">
-            <div className={`identity-badge ${isAdmin ? 'identity-badge-admin' : ''}`}>
-              <strong>{identity}</strong>
-              <span>{isAdmin ? '管理者' : '本人入力'}</span>
-            </div>
-            <button type="button" className="hero-switch-btn" onClick={switchIdentity}>名前を選び直す</button>
-          </div>
-        </div>
-        <div className={`cloud-status cloud-status-${cloudStatus}`}>
-          <strong>Cloud Sync</strong>
-          <span>{cloudMessage}</span>
-        </div>
-      </section>
-
-      <section className="overview-grid" aria-label="月の概要">
-        <div className="overview-card">
-          <span>対象月</span>
-          <strong>{year}年 {MONTH_JP[month - 1]}</strong>
-        </div>
-        <div className="overview-card">
-          <span>出席入力</span>
-          <strong>{explicitAttendanceCount}/{totalAttendanceSlots}</strong>
-        </div>
-        <div className={`overview-card ${unassignedCount > 0 ? 'overview-card-warn' : 'overview-card-ok'}`}>
-          <span>未担当</span>
-          <strong>{unassignedCount}</strong>
-        </div>
-        <div className="overview-card">
-          <span>例会</span>
-          <strong>{meetingCount}</strong>
-        </div>
-      </section>
-
-      {/* ── Lock banner ── */}
-      {isMonthLocked && (
-        <section className="panel lock-banner">
-          <div className="lock-banner-inner">
-            <span className="lock-banner-icon">🔒</span>
-            <p>{year}年{MONTH_JP[month - 1]}の担当表は確定済みです。編集するには管理者がロックを解除してください。</p>
-          </div>
-          {isAdmin && (
-            <button type="button" className="unlock-btn" onClick={unlockMonth}>ロック解除</button>
-          )}
-        </section>
-      )}
-
-      {/* ── Month picker ── */}
-      <section id="sec-month" className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>0. 月を選ぶ</h2>
-            <p>表示したい月を切り替えられます。</p>
-          </div>
-          {isAdmin && (
-            <div className="export-actions">
-              <button type="button" className="export-btn export-btn-line" onClick={copyLineText}>📋 LINE用テキスト</button>
-              <button type="button" className="export-btn" onClick={exportMonthTable}>月表を保存</button>
-              <button type="button" className="export-btn export-btn-html" onClick={exportHtmlTable}>💊 HTML表</button>
-              <button
-                type="button"
-                className={`export-btn ${isMonthLocked ? 'export-btn-locked' : 'export-btn-finalize'}`}
-                onClick={isMonthLocked ? unlockMonth : finalizeMonth}
-              >
-                {isMonthLocked ? '🔒 確定済み' : '✅ 今月を確定'}
-              </button>
-              {exportMessage ? <span className="export-message">{exportMessage}</span> : null}
-            </div>
-          )}
-        </div>
-        <div className="month-nav">
-          <div className="month-field"><label className="month-field-label">年</label><input type="number" className="year-input" value={year} min={2020} max={2040} onChange={(e) => { const v = parseInt(e.target.value, 10); if (v >= 2020 && v <= 2040) setYear(v) }} /></div>
-          <div className="month-field"><label className="month-field-label">月</label><select className="month-select" value={month} onChange={(e) => setMonth(parseInt(e.target.value, 10))}>{MONTH_JP.map((label, i) => <option key={i + 1} value={i + 1}>{label}</option>)}</select></div>
-          <div className="month-field month-field-font-scale"><label className="month-field-label">文字サイズ</label><input type="number" className="font-scale-input" value={textScaleDraft} min={MIN_TEXT_SCALE} max={MAX_TEXT_SCALE} step={5} onChange={(e) => setTextScaleDraft(e.target.value)} onBlur={applyTextScaleDraft} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyTextScaleDraft(); e.currentTarget.blur() } }} /><span className="font-scale-unit">%</span><div className="font-scale-actions"><button type="button" className="font-scale-btn" onClick={applyTextScaleDraft}>適用</button><button type="button" className="font-scale-btn" onClick={resetTextScale}>100%に戻す</button><button type="button" className="font-scale-btn font-scale-btn-primary" onClick={saveDefaultTextScale}>既定に保存</button></div><span className="font-scale-help">安全範囲: {MIN_TEXT_SCALE}% - {MAX_TEXT_SCALE}%</span></div>
-          <span className="month-display-text">{year}年 {MONTH_JP[month - 1]}</span>
-        </div>
-      </section>
-
-      {isAdmin && <section className="panel admin-note"><p>管理者モードでは、月設定・各回設定・先生設定・メモ編集・エクスポートができます。</p></section>}
-
-      {/* ── Session settings (admin) ── */}
-      {isAdmin && <section id="sec-sessions" className="panel"><button type="button" className="collapse-header" onClick={() => setSessionOpen((o) => !o)} aria-expanded={sessionOpen}><span>1. 各回の設定</span><span className="collapse-icon">{sessionOpen ? '▲' : '▼'}</span></button>{!sessionOpen ? <p className="collapse-hint">{sessions.length === 0 ? 'この月に土曜日がありません' : sessions.map((s) => { const type = sessionTypesByMonth[monthKey]?.[s.key] ?? 'normal'; const icon = type === 'holiday' ? 'やすみ' : type === 'meeting' ? '例会' : '通常'; return `${s.label}(${icon})` }).join(' · ')}</p> : sessions.length === 0 ? <p className="empty-msg">この月に土曜日がありません。</p> : <div className="session-list">{sessions.map((session, i) => { const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'; const classes = getSessionClasses(session); const isOverridden = !!sessionClassesByMonth[monthKey]?.[session.key]; const isWangWeek = session.weekIndex % 2 === 1; return <div key={session.key} className={`session-row session-row-${type}`}><div className="session-row-top"><div className="session-date-info"><strong className="session-date">{session.label}</strong><span className="session-week">{session.closed ? 'やすみ' : `${i + 1}週目${isWangWeek ? '（王週）' : ''}`}</span></div><select className="session-type-select" value={type} onChange={(e) => setSessionType(session.key, e.target.value)} disabled={!canEditAdmin}>{sessionTypeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}</select></div>{!session.closed && <div className="session-special-note-row"><span className="session-special-note-label">特別連絡：</span><input className="session-special-note-input" value={session.specialNote || ''} placeholder="特別連絡を入力..." onChange={(e) => setSessionSpecialNote(session.key, e.target.value)} disabled={!canEditAdmin} /></div>}{!session.closed && <div className="session-class-area"><div className="session-class-header"><span className="session-class-label">開講クラス</span>{isOverridden && canEditAdmin && <button type="button" className="reset-btn" onClick={() => resetSessionClasses(session.key)}>自動に戻す</button>}</div><div className="session-class-chips">{allClasses.map((cls) => <div key={cls} className="session-class-chip-row"><ClassChip key={cls} label={cls} checked={classes.includes(cls)} onChange={(e) => toggleSessionClass(session, cls, e.target.checked)} disabled={!canEditAdmin} /><select className="manual-teacher-select" value={getManualAssignment(session, cls) ?? ''} onChange={(e) => e.target.value ? setManualAssignment(session.key, cls, e.target.value) : resetManualAssignment(session.key, cls)} disabled={!canEditAdmin}>{<option value="">auto</option>}{teachers.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}</select>{getManualAssignment(session, cls) && <button type="button" className="icon-btn" onClick={() => resetManualAssignment(session.key, cls)} title="解除">×</button>}</div>)}</div></div>}</div> })}</div>}</section>}
-
-      {/* ── Special rules (admin) ── */}
-      {isAdmin && <section id="sec-special" className="panel"><button type="button" className="collapse-header" onClick={() => setSpecialOpen((o) => !o)} aria-expanded={specialOpen}><span>2. 特殊設定</span><span className="collapse-icon">{specialOpen ? '▲' : '▼'}</span></button>{!specialOpen ? <p className="collapse-hint">王さん: {specialRules.wangSplit !== false ? 'ON' : 'OFF'} · ランダム: {specialRules.random === true ? 'ON' : 'OFF'}</p> : <div className="special-rules-list"><div className="special-rule-row"><div className="special-rule-info"><strong>王さんルール（入門自動分割）</strong><p>奇数週に「入門(denji)」と「入門(王)」が両方存在するとき、デフォルトで入門を2クラスに分けます。</p></div><label className="toggle-label"><input type="checkbox" checked={specialRules.wangSplit !== false} onChange={(e) => setSpecialRule('wangSplit', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span><span className="toggle-text">{specialRules.wangSplit !== false ? 'ON' : 'OFF'}</span></label></div><div className="special-rule-row"><div className="special-rule-info"><strong>ランダム配車</strong><p>複数の先生が同じクラスを担当できる場合、ランダムに先生を選びます。</p></div><label className="toggle-label"><input type="checkbox" checked={specialRules.random === true} onChange={(e) => setSpecialRule('random', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span><span className="toggle-text">{specialRules.random === true ? 'ON' : 'OFF'}</span></label></div></div>}</section>}
-
-      {/* ── Class / status settings (admin) ── */}
-      {isAdmin && <section id="sec-settings" className="panel"><button type="button" className="collapse-header" onClick={() => setSettingsOpen((o) => !o)} aria-expanded={settingsOpen}><span>3. クラス・ステータスの設定</span><span className="collapse-icon">{settingsOpen ? '▲' : '▼'}</span></button>{!settingsOpen ? <p className="collapse-hint">クラス: {allClasses.join(' · ')} ／ ステータス: {statusOptions.map((o) => o.label).join(' · ')}</p> : <div className="settings-sections"><div className="settings-section"><h3 className="settings-section-title">クラス一覧</h3><p className="panel-desc">クラス名の追加・削除・リネームができます。</p><div className="settings-sub-label">デフォルト開講クラス</div><div className="class-chip-row">{allClasses.map((cls) => <ClassChip key={cls} label={cls} checked={defaultClasses.includes(cls)} onChange={(e) => toggleDefaultClass(cls, e.target.checked)} />)}</div><div className="settings-sub-label" style={{ marginTop: 14 }}>クラス名の編集</div><div className="edit-list">{allClasses.map((cls, idx) => <div key={idx} className="edit-row"><input className="edit-input" value={cls} ref={idx === allClasses.length - 1 ? newClassRef : null} onChange={(e) => renameGlobalClass(idx, e.target.value)} /><button type="button" className="icon-btn danger" onClick={() => deleteGlobalClass(idx)}>×</button></div>)}</div><button type="button" className="add-item-btn" style={{ marginTop: 10 }} onClick={addGlobalClass}>+ クラスを追加</button></div><div className="settings-divider" /><div className="settings-section"><h3 className="settings-section-title">出欠ステータス</h3><p className="panel-desc">ステータス表示名は増減できます。動作ルールは計算に使われます。</p><div className="status-edit-list">{statusOptions.map((opt, idx) => { const isBuiltIn = ['yes', 'maybe', 'no', 'meeting_only'].includes(opt.id); return <div key={opt.id} className="status-edit-row">{isBuiltIn ? <span className="status-label-fixed">{opt.label}</span> : <input className="edit-input status-label-input" value={opt.label} ref={idx === statusOptions.length - 1 ? newStatusRef : null} onChange={(e) => updateStatusOption(idx, 'label', e.target.value)} placeholder="表示名" />}<select className="status-behavior-select" value={opt.behavior} onChange={(e) => updateStatusOption(idx, 'behavior', e.target.value)} disabled={isBuiltIn}>{BEHAVIORS.map((behavior) => <option key={behavior.value} value={behavior.value}>{behavior.label}</option>)}</select>{!isBuiltIn && <button type="button" className="icon-btn danger" onClick={() => deleteStatusOption(idx)}>×</button>}</div> })}</div><button type="button" className="add-item-btn" style={{ marginTop: 10 }} onClick={addStatusOption}>+ ステータスを追加</button></div></div>}</section>}
-
-      {/* ── Teacher settings (admin) ── */}
-      {isAdmin && <section id="sec-teachers" className="panel"><button type="button" className="collapse-header" onClick={() => setTeacherOpen((o) => !o)} aria-expanded={teacherOpen}><span>4. 先生の設定</span><span className="collapse-icon">{teacherOpen ? '▲' : '▼'}</span></button>{!teacherOpen ? <p className="collapse-hint">{teachers.map((t) => t.name).join(' · ')}</p> : <><p className="panel-desc">先生の追加・削除・担当クラス・デフォルト出欠を編集できます。</p><div className="teacher-list">{teachers.map((teacher, idx) => <div key={idx} draggable onDragStart={(e) => { teacherDragRef.current = idx; e.dataTransfer.effectAllowed = 'move' }} onDragOver={(e) => { e.preventDefault(); if (teacherDragRef.current !== idx) setTeacherDragOverIdx(idx) }} onDragLeave={() => setTeacherDragOverIdx(null)} onDrop={(e) => { e.preventDefault(); reorderTeacher(teacherDragRef.current, idx); setTeacherDragOverIdx(null) }} onDragEnd={() => { teacherDragRef.current = null; setTeacherDragOverIdx(null) }} className={`teacher-card${teacherDragOverIdx === idx && teacherDragRef.current !== idx ? ' teacher-drag-over' : ''}`}><div className="teacher-card-header"><span className="drag-handle" title="ドラッグして並び替え">⠿</span><input className="teacher-name-input" value={teacher.name} ref={idx === teachers.length - 1 ? newTeacherRef : null} onChange={(e) => updateTeacher(idx, 'name', e.target.value)} /><div className="teacher-card-actions"><button type="button" className="icon-btn" disabled={idx === 0} onClick={() => moveTeacher(idx, -1)}>↑</button><button type="button" className="icon-btn" disabled={idx === teachers.length - 1} onClick={() => moveTeacher(idx, 1)}>↓</button><button type="button" className="icon-btn danger" onClick={() => deleteTeacher(idx)}>×</button></div></div><div className="teacher-meta-row"><label className="flag-label"><input type="checkbox" checked={!!teacher.remote} onChange={(e) => updateTeacher(idx, 'remote', e.target.checked)} /><span>遠方</span></label><label className="flag-label"><input type="checkbox" checked={!!teacher.skipMeeting} onChange={(e) => updateTeacher(idx, 'skipMeeting', e.target.checked)} /><span>例会のみ</span></label><label className="default-status-label"><span>デフォルト出欠</span><select className="default-status-select" value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)}>{statusOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select></label></div><div className="teacher-classes">{allClasses.map((cls) => <ClassChip key={cls} label={cls} checked={teacher.classes.includes(cls)} onChange={(e) => toggleTeacherClass(idx, cls, e.target.checked)} />)}</div></div>)}</div><button type="button" className="add-item-btn" onClick={addTeacher}>+ 先生を追加</button></>}</section>}
-
-      {/* ── Attendance input ── */}
-      <section id="sec-attendance" className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>{isAdmin ? '5. 出席を入力' : '1. 自分の出席を入力'}</h2>
-            <p>{isAdmin ? '管理者は対象の先生を選んで編集できます。' : isMonthLocked ? 'この月の担当表は確定済みです。' : 'あなたが編集できるのは自分の出席だけです。'}</p>
-          </div>
-        </div>
-
-        {/* Teacher selector chips */}
-        {isAdmin && (
-          <div className="chip-row">
-            {teachers.map((teacher) => (
-              <button key={teacher.name} type="button" className={teacher.name === effectiveTeacher ? 'chip active' : 'chip'} onClick={() => handleSelectTeacher(teacher.name)}>
-                {teacher.name}
-              </button>
-            ))}
-          </div>
+            {isAdmin ? <button type="button" className="ghost-btn" onClick={unlockMonth}>ロック解除</button> : null}
+          </section>
         )}
-
-        {/* Teacher shareable links (admin only) */}
-        {isAdmin && (
-          <div className="teacher-links-row">
-            <span className="teacher-links-hint">🔗 先生別リンク：</span>
-            {teachers.map((t) => (
-              <button
-                key={t.name}
-                type="button"
-                className={`teacher-link-btn ${copiedLink === t.name ? 'teacher-link-btn-done' : ''}`}
-                onClick={() => copyTeacherLink(t.name)}
-                title={`${t.name}さん専用リンクをコピー`}
-              >
-                {copiedLink === t.name ? `✓ ${t.name}` : t.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        <p className="selected-label">{effectiveTeacher} さんの出席</p>
-        <div className="session-grid">
-          {sessions.map((session) => {
-            const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
-            const effectiveStatus = getEffectiveStatus(effectiveTeacher, session.key)
-            const isExplicit = attendance[effectiveTeacher]?.[session.key] !== undefined
-            const disabled = session.closed || isMonthLocked
-            return (
-              <div key={session.key} className={`session-card session-card-${type}`}>
-                <div className="session-card-info">
-                  <strong>{session.label}</strong>
-                  <span className="session-week">{session.closed ? 'やすみ' : session.meeting ? '例会' : `${session.weekIndex}週目`}</span>
-                  {!isExplicit && !session.closed && <span className="default-badge">デフォルト</span>}
-                </div>
-                <select value={effectiveStatus} onChange={(e) => handleStatusChange(session.key, e.target.value)} disabled={disabled} className={!isExplicit ? 'select-default' : ''}>
-                  {statusOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                </select>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
-      {/* ── Schedule table ── */}
-      <section id="sec-schedule" className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>{isAdmin ? '6. 自動で決まった担当' : '2. 自動で決まった担当'}</h2>
-            <p>△ は人数不足のときだけ追加。赤は未担当クラスです。</p>
-          </div>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th className="col-sticky col-head">名前</th>
-                {sessions.map((s) => <th key={s.key}>{s.label}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="col-sticky td-label">特別連絡</td>
-                {schedule.map((s) => <td key={s.key} className={s.closed ? 'td-holiday' : ''}>{s.special || ''}</td>)}
-              </tr>
-              {schedule.some((s) => s.unassignedClasses?.length > 0) && (
-                <tr>
-                  <td className="col-sticky td-label td-unassigned-label">未担当</td>
-                  {schedule.map((s) => <td key={s.key} className={s.unassignedClasses?.length > 0 ? 'td-unassigned' : s.closed ? 'td-holiday' : ''}>{s.unassignedClasses?.join('、') || ''}</td>)}
-                </tr>
-              )}
-              {teachers.map((teacher) => (
-                <tr key={teacher.name}>
-                  <td className="col-sticky td-label">{teacher.name}</td>
-                  {schedule.map((s) => {
-                    const assigned = Object.entries(s.assignments).filter(([, assignedTeacher]) => assignedTeacher === teacher.name).map(([className]) => className).join(' / ')
-                    const atMeeting = s.meetingOnlyTeachers?.includes(teacher.name) || s.maybeMeetingTeachers?.includes(teacher.name)
-                    return (
-                      <td key={s.key} className={s.closed ? 'td-holiday' : ''}>
-                        {assigned || (atMeeting ? '会議' : '')}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* ── 伝言板 ── */}
-      <section id="sec-bulletin" className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>{isAdmin ? '7. 伝言板' : '3. 伝言板'}</h2>
-            <p>全員が投稿・編集・削除・固定・重要・並び替えをできます。月をまたいでも残ります。</p>
-          </div>
-          <button
-            type="button"
-            className="bulletin-new-btn"
-            onClick={() => { setShowNewBulletin(true); setEditingBulletinId(null) }}
-          >
-            ＋ 新規作成
-          </button>
-        </div>
-
-        {/* New post form */}
-        {showNewBulletin && (
-          <div className="bulletin-compose">
-            <div className="bulletin-compose-author">
-              <span className="bulletin-author-dot" />
-              <strong>{identity}</strong>
-            </div>
-            <textarea
-              className="bulletin-compose-textarea"
-              value={newBulletinText}
-              onChange={(e) => setNewBulletinText(e.target.value)}
-              placeholder="連絡事項・お知らせ・メモなど…"
-              rows={4}
-              autoFocus
-            />
-            <div className="bulletin-compose-actions">
-              <button type="button" className="bulletin-cancel-btn" onClick={() => { setShowNewBulletin(false); setNewBulletinText('') }}>キャンセル</button>
-              <button type="button" className="bulletin-submit-btn" onClick={createBulletin} disabled={!newBulletinText.trim()}>確定</button>
-            </div>
-          </div>
-        )}
-
-        {/* Post list */}
-        {bulletinBoard.length === 0 && !showNewBulletin ? (
-          <div className="bulletin-empty">
-            <p>まだ伝言はありません。「＋ 新規作成」から投稿できます。</p>
-          </div>
-        ) : (
-          <div className="bulletin-list">
-            {sortedBulletin.map((post) => {
-              const canEdit = isAdmin || identity === post.author
-              const isEditing = editingBulletinId === post.id
-              const isPinned = !!post.pinned
-              const isImportant = !!post.important
-              const confirmedBy = Array.isArray(post.confirmedBy) ? post.confirmedBy : []
-              const isConfirmed = confirmedBy.includes(identity)
-              const canMarkImportant = isAdmin || identity === post.author
-              const tier = sortedBulletin.filter((p) => !!p.pinned === isPinned)
-              const tierPos = tier.findIndex((p) => p.id === post.id)
-              const isDragOver = bulletinDragOverId === post.id && bulletinDragRef.current !== post.id
-              return (
-                <div
-                  key={post.id}
-                  draggable
-                  onDragStart={(e) => { bulletinDragRef.current = post.id; e.dataTransfer.effectAllowed = 'move' }}
-                  onDragOver={(e) => { e.preventDefault(); if (bulletinDragRef.current !== post.id) setBulletinDragOverId(post.id) }}
-                  onDragLeave={() => setBulletinDragOverId(null)}
-                  onDrop={(e) => { e.preventDefault(); reorderBulletin(bulletinDragRef.current, post.id); setBulletinDragOverId(null) }}
-                  onDragEnd={() => { bulletinDragRef.current = null; setBulletinDragOverId(null) }}
-                  className={[
-                    'bulletin-post',
-                    identity === post.author ? 'bulletin-post-own' : '',
-                    isPinned ? 'bulletin-post-pinned' : '',
-                    isImportant ? 'bulletin-post-important' : '',
-                    'bulletin-post-draggable',
-                    isDragOver ? 'bulletin-drag-over' : '',
-                  ].filter(Boolean).join(' ')}>
-                  <div className="bulletin-post-header">
-                    <div className="bulletin-post-meta">
-                      <span className="bulletin-author-dot" />
-                      <strong className="bulletin-post-author">{post.author}</strong>
-                      {isPinned && <span className="bulletin-badge-pin">📌 固定</span>}
-                      {isImportant && <span className="bulletin-badge-important">⭐ 重要</span>}
-                      <span className="bulletin-post-date">
-                        {new Date(post.updatedAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        {post.updatedAt !== post.createdAt && ' (編集済)'}
-                      </span>
-                    </div>
-                    <div className="bulletin-post-btns">
-                      <div className="bulletin-move-btns">
-                        <button type="button" className="bulletin-move-btn" disabled={tierPos === 0} onClick={() => moveBulletin(post.id, -1)} title="上へ">↑</button>
-                        <button type="button" className="bulletin-move-btn" disabled={tierPos === tier.length - 1} onClick={() => moveBulletin(post.id, 1)} title="下へ">↓</button>
-                      </div>
-                      {!isEditing && (
-                        <button type="button" className={`bulletin-confirm-btn ${isConfirmed ? 'active' : ''}`} onClick={() => toggleConfirmBulletin(post.id)} title={isConfirmed ? '確認を取り消す' : '確認した'}>
-                          {isConfirmed ? `確認済 ${confirmedBy.length}` : `確認 ${confirmedBy.length}`}
-                        </button>
-                      )}
-                      {!isEditing && (
-                        <button type="button" className={`bulletin-important-btn ${isImportant ? 'active' : ''}`} onClick={() => toggleImportantBulletin(post.id)} title={isImportant ? '重要解除' : '重要にする'}>⭐</button>
-                      )}
-                      {!isEditing && (
-                        <button type="button" className={`bulletin-pin-btn ${isPinned ? 'active' : ''}`} onClick={() => togglePinBulletin(post.id)} title={isPinned ? '固定解除' : '固定する'}>📌</button>
-                      )}
-                      {canEdit && !isEditing && (
-                        <>
-                          <button type="button" className="bulletin-edit-btn" onClick={() => startEditBulletin(post)}>編集</button>
-                          <button type="button" className="bulletin-del-btn" onClick={() => deleteBulletin(post.id)}>削除</button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {isEditing ? (
-                    <div className="bulletin-edit-area">
-                      <textarea
-                        className="bulletin-compose-textarea"
-                        value={editingBulletinText}
-                        onChange={(e) => setEditingBulletinText(e.target.value)}
-                        rows={4}
-                        autoFocus
-                      />
-                      <div className="bulletin-compose-actions">
-                        <button type="button" className="bulletin-cancel-btn" onClick={cancelEditBulletin}>キャンセル</button>
-                        <button type="button" className="bulletin-submit-btn" onClick={saveEditBulletin} disabled={!editingBulletinText.trim()}>確定</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="bulletin-post-body">{post.message}</p>
-                      <div className="bulletin-confirmed-row">
-                        <span className="bulletin-confirmed-label">確認済み</span>
-                        <span className="bulletin-confirmed-names">{confirmedBy.length > 0 ? confirmedBy.join('、') : 'まだありません'}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* ── Memos ── */}
-      <section id="sec-memos" className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>{isAdmin ? '8. メモ' : '4. メモ'}</h2>
-            <p>全員がメモと会議記録を編集できます。</p>
-          </div>
-        </div>
-
-        <div className="my-memo-card">
-          <div className="my-memo-header">
-            <div>
-              <h3>My Memo</h3>
-              <p>{identity} さん用の個人メモです。他の人でログインすると表示されません。</p>
-            </div>
-          </div>
-          <textarea
-            className="my-memo-textarea"
-            value={myMemo}
-            onChange={(e) => setMyMemo(e.target.value)}
-            placeholder="自分だけのメモを書けます…"
-            rows={8}
-          />
-        </div>
-
-        {/* Meeting notes — full-width cards, one per meeting session */}
-        {schedule.filter((s) => s.meeting && !s.closed).map((session) => (
-          <div key={`mn-${session.key}`} className="meeting-note-card">
-            <div className="meeting-note-header">
-              <span className="meeting-note-icon">📋</span>
-              <div>
-                <strong>{session.label} 会議記録</strong>
-                <span className="meeting-note-sub">例会の議事録・決定事項・連絡事項</span>
-              </div>
-            </div>
-            <textarea
-              className="meeting-note-textarea"
-              value={meetingNotes[session.key] ?? ''}
-              onChange={(e) => setMeetingNote(session.key, e.target.value)}
-              placeholder="会議内容を記録…（議事録・決定事項・次回への伝達事項など）"
-              rows={8}
-            />
-          </div>
-        ))}
-
-        {/* Regular memo grid */}
-        <div className="memo-list" style={{ marginTop: schedule.some((s) => s.meeting && !s.closed) ? 16 : 0 }}>
-          {schedule.map((session) => (
-            <article key={session.key} className={`memo-card ${session.closed ? 'memo-holiday' : session.meeting ? 'memo-meeting' : ''}`}>
-              <h3>{session.label}</h3>
-              {session.closed ? (
-                <p className="memo-auto">わをん休み</p>
-              ) : (
-                <>
-                  <p className="memo-auto">来る人: {session.selectedTeachers.join('、') || 'なし'}</p>
-                  <p className="memo-auto">例会のみ: {session.meetingOnlyTeachers.join('、') || 'なし'}</p>
-                  {session.maybeMeetingTeachers?.length > 0 && <p className="memo-auto">△・会議○: {session.maybeMeetingTeachers.join('、')}</p>}
-                  {session.selectedMaybeTeachers.length > 0 && <p className="memo-auto">△から追加: {session.selectedMaybeTeachers.join('、')}</p>}
-                  {session.unassignedClasses?.length > 0 && <p className="memo-warn">⚠ 未担当: {session.unassignedClasses.join('、')}</p>}
-                  {session.notes.map((note) => <p key={note} className="memo-auto">{note}</p>)}
-                </>
-              )}
-              <label className="memo-label">
-                メモ
-                <textarea
-                  className="memo-textarea"
-                  value={memos[session.key] ?? ''}
-                  onChange={(e) => setMemo(session.key, e.target.value)}
-                  placeholder="自由に書き込めます…"
-                  rows={3}
-                />
-              </label>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Archive (admin only) ── */}
-      {isAdmin && (
-        <section id="sec-archive" className="panel">
-          <button
-            type="button"
-            className="collapse-header"
-            onClick={() => setArchiveOpen((o) => !o)}
-            aria-expanded={archiveOpen}
-          >
-            <span>9. アーカイブ</span>
-            <span className="collapse-icon">{archiveOpen ? '▲' : '▼'}</span>
-          </button>
-          {!archiveOpen ? (
-            <p className="collapse-hint">
-              {archiveEntries.length === 0
-                ? '「今月を確定」すると、ここに保存されます。'
-                : archiveEntries.map(([, a]) => a.label).join(' · ')}
-            </p>
-          ) : archiveEntries.length === 0 ? (
-            <p className="empty-msg">まだ確定済みの月はありません。「今月を確定」ボタンで保存できます。</p>
-          ) : (
-            <div className="archive-list">
-              {archiveEntries.map(([key, arc]) => (
-                <div key={key} className="archive-row">
-                  <div className="archive-row-info">
-                    <strong>{arc.label}</strong>
-                    <span>確定日：{new Date(arc.savedAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                  </div>
-                  <div className="archive-actions">
-                    <button type="button" className="archive-dl-btn" onClick={() => downloadArchive(key, arc)}>↓ ダウンロード</button>
-                    <button type="button" className="archive-del-btn" onClick={() => deleteArchive(key)}>削除</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Scroll nav ── */}
-      <ScrollNav sections={navSections} activeSection={activeSection} navOpen={navOpen} onToggle={(next) => setNavOpen((prev) => typeof next === 'boolean' ? next : !prev)} />
+        {views[currentView]}
       </main>
     </div>
   )
