@@ -2170,19 +2170,19 @@ export default function App() {
   }
 
   const views = {
-    home: <HomeView />,
-    attendance: <AttendanceView />,
-    schedule: <ScheduleView />,
-    sessions: <SessionsView />,
-    settings: <SettingsView />,
-    collab: <CollabView />,
+    home: HomeView(),
+    attendance: AttendanceView(),
+    schedule: ScheduleView(),
+    sessions: SessionsView(),
+    settings: SettingsView(),
+    collab: CollabView(),
   }
   const mobileViews = {
-    home: <MobileHomeView />,
-    attendance: <MobileAttendanceView />,
-    schedule: <MobileScheduleView />,
-    mobileAdmin: <MobileAdminView />,
-    mobileMemo: <MobileMemoView />,
+    home: MobileHomeView(),
+    attendance: MobileAttendanceView(),
+    schedule: MobileScheduleView(),
+    mobileAdmin: MobileAdminView(),
+    mobileMemo: MobileMemoView(),
   }
 
   return (
