@@ -1185,6 +1185,9 @@ export default function App() {
     sum + editableSessions.filter((session) => attendance[teacher.name]?.[session.key] !== undefined).length
   ), 0)
   const totalAttendanceSlots = teachers.length * editableSessions.length
+  const mobileAttendanceDoneCount = teachers.filter((teacher) => (
+    editableSessions.some((session) => attendance[teacher.name]?.[session.key] !== undefined)
+  )).length
   const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
   const effectiveUiMode = uiMode === 'auto' ? (isMobileViewport ? 'mobile' : 'desktop') : uiMode
   const canUseView = (sections, id) => sections.some((item) => item.id === id && (!item.adminOnly || isAdmin))
@@ -1896,7 +1899,7 @@ export default function App() {
         <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" />
         <div className="mobile-metrics">
           <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${sessionTypeLabel(nextSession)}` : 'なし'}</strong></div>
-          <div><span>出席入力</span><strong>{explicitAttendanceCount}/{totalAttendanceSlots}</strong></div>
+          <div><span>出席入力</span><strong>{mobileAttendanceDoneCount}/{teachers.length}</strong></div>
           <div className={unassignedCount > 0 ? 'is-warn' : 'is-ok'}><span>未分配</span><strong>{unassignedCount}</strong></div>
           <div><span>代替候補</span><strong>{substituteCount}</strong></div>
         </div>

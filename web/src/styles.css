@@ -2113,10 +2113,10 @@ textarea::placeholder {
 .mobile-month-controls {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
   width: 100%;
-  padding: 8px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface-subtle);
@@ -2130,7 +2130,7 @@ textarea::placeholder {
 
 .mobile-month-controls span {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 900;
 }
 
@@ -2138,16 +2138,18 @@ textarea::placeholder {
 .mobile-month-controls select,
 .mobile-month-controls button {
   min-width: 0;
-  min-height: 36px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--text);
+  font-size: 1rem;
   font-weight: 900;
 }
 
 .mobile-month-controls button {
-  align-self: end;
+  grid-column: 1 / -1;
+  width: 100%;
   color: var(--primary-strong);
 }
 
