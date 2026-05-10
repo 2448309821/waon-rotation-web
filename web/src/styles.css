@@ -2035,6 +2035,17 @@ textarea::placeholder {
   font-weight: 900;
 }
 
+.lesson-edit-note {
+  margin: -2px 0 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.lesson-edit-note.is-warning {
+  color: var(--warning);
+}
+
 .lesson-long-textarea {
   min-height: 230px;
 }

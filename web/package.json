@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/noto-sans-jp": "^5.2.9",
     "@supabase/supabase-js": "^2.49.8",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

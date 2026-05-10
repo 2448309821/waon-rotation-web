@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
+import '@fontsource/noto-sans-jp/400.css'
+import '@fontsource/noto-sans-jp/700.css'
 import {
   ALL_CLASSES,
   BEHAVIORS,
@@ -493,7 +495,7 @@ function buildLessonReportPdfElement(report) {
   root.style.width = '210mm'
   root.style.minHeight = '297mm'
   root.style.background = '#fff'
-  root.style.fontFamily = 'Meiryo, "Yu Gothic", sans-serif'
+  root.style.fontFamily = '"Noto Sans JP", Meiryo, "Yu Gothic", sans-serif'
   root.style.color = '#111'
   root.style.fontSize = '12pt'
   root.style.lineHeight = '1.45'
@@ -2206,6 +2208,7 @@ export default function App() {
 
           <section className="panel">
             <h2>メモ</h2>
+            {isMonthLocked ? <p className="lesson-edit-note">この月は確定済みですが、メモと会議記録は編集できます。</p> : null}
             <div className="my-memo-card">
               <div className="my-memo-header"><div><h3>My Memo</h3><p>{identity} さん用の個人メモです。</p></div></div>
               <textarea value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモを書けます..." rows={5} />
@@ -2262,6 +2265,8 @@ export default function App() {
       <div className={compact ? 'lesson-form lesson-form-compact' : 'lesson-form'}>
         <section className="lesson-form-card">
           <h2>{report.dateText} {report.className}</h2>
+          {isMonthLocked ? <p className="lesson-edit-note">この月は確定済みですが、授業記録は編集できます。</p> : null}
+          {!canEditReport ? <p className="lesson-edit-note is-warning">担当者または管理者だけが編集できます。</p> : null}
           <div className="lesson-basic-grid">
             <label><span>日付</span><input value={report.dateText} onChange={(e) => setLessonReportField(report.id, 'dateText', e.target.value)} disabled={!canEditReport} /></label>
             <label><span>クラス</span><input value={report.className} onChange={(e) => setLessonReportField(report.id, 'className', e.target.value)} disabled={!canEditReport} /></label>
@@ -2750,6 +2755,7 @@ export default function App() {
         </section>
         <section className="mobile-card-list">
           <h2>自分メモ</h2>
+          {isMonthLocked ? <p className="mobile-help-text">確定済みの月でもメモは編集できます。</p> : null}
           <textarea className="mobile-textarea" value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモ..." rows={5} />
         </section>
         {schedule.filter((session) => session.meeting && !session.closed).length > 0 ? (
