@@ -2110,6 +2110,47 @@ textarea::placeholder {
   font-size: 0.72rem;
 }
 
+.mobile-month-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.mobile-month-controls label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mobile-month-controls span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.mobile-month-controls input,
+.mobile-month-controls select,
+.mobile-month-controls button {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 900;
+}
+
+.mobile-month-controls button {
+  align-self: end;
+  color: var(--primary-strong);
+}
+
 .mobile-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2278,7 +2319,8 @@ textarea::placeholder {
 .mobile-attendance-card,
 .mobile-schedule-card,
 .mobile-bulletin-card,
-.mobile-memo-compose {
+.mobile-memo-compose,
+.mobile-memo-session-card {
   display: grid;
   gap: 12px;
   padding: 12px;
@@ -2445,6 +2487,27 @@ textarea::placeholder {
   min-height: 112px;
   padding: 12px;
   resize: vertical;
+}
+
+.mobile-memo-session-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.mobile-memo-session-card.is-disabled {
+  background: var(--surface-muted);
+}
+
+.mobile-memo-facts {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
 }
 
 .mobile-memo-compose div {
