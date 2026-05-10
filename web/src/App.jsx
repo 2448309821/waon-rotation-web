@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
+import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
 import {
   ALL_CLASSES,
   BEHAVIORS,
@@ -70,6 +72,7 @@ function buildFallbackState() {
     archivedSchedules: {},
     meetingNotesByMonth: {},
     myMemosByTeacher: {},
+    lessonReportsByMonth: {},
     bulletinBoard: [],
   }
 }
@@ -100,6 +103,7 @@ function mergeState(saved) {
     archivedSchedules: saved.archivedSchedules ?? {},
     meetingNotesByMonth: saved.meetingNotesByMonth ?? {},
     myMemosByTeacher: saved.myMemosByTeacher ?? {},
+    lessonReportsByMonth: saved.lessonReportsByMonth ?? {},
     bulletinBoard: Array.isArray(saved.bulletinBoard) ? saved.bulletinBoard : [],
   }
 }
@@ -239,6 +243,301 @@ function buildLineText(year, month, schedule, memos) {
   return lines.join('\n').trim()
 }
 
+function escapeXml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
+}
+
+function wordRun(text, { bold = false, size = 24 } = {}) {
+  return `<w:r><w:rPr><w:rFonts w:ascii="Meiryo" w:hAnsi="Meiryo" w:eastAsia="Meiryo" w:cs="Meiryo"/><w:sz w:val="${size}"/>${bold ? '<w:b/>' : ''}</w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`
+}
+
+function wordParagraph(text, { bold = false, size = 24, align = 'left', after = 0, line = 240, firstLine = 0, hanging = 0 } = {}) {
+  const ind = firstLine || hanging ? `<w:ind${firstLine ? ` w:firstLine="${firstLine}"` : ''}${hanging ? ` w:hanging="${hanging}"` : ''}/>` : ''
+  return `<w:p><w:pPr><w:jc w:val="${align}"/><w:spacing w:before="0" w:after="${after}" w:line="${line}" w:lineRule="auto"/>${ind}</w:pPr>${wordRun(text, { bold, size })}</w:p>`
+}
+
+function textToWordParagraphs(value, options = {}) {
+  const lines = String(value ?? '').split(/\r?\n/)
+  return lines.map((line) => wordParagraph(line, options)).join('')
+}
+
+function contentToNumberedWordParagraphs(value) {
+  const lines = String(value ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  if (lines.length === 0) return wordParagraph('', { bold: true, size: 24 })
+  return lines.map((line, idx) => {
+    const normalized = line.replace(/^\d+[.)．、]\s*/, '').replace(/\*\*/g, '')
+    return wordParagraph(`${idx + 1}.  ${normalized}`, { bold: true, size: 24, after: 0, line: 240 })
+  }).join('')
+}
+
+function handoffToBulletWordParagraphs(value) {
+  const lines = String(value ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  if (lines.length === 0) return wordParagraph('● ', { bold: true, size: 24 })
+  return lines.map((line) => wordParagraph(`●  ${line.replace(/^●\s*/, '').replace(/\*\*/g, '')}`, { bold: true, size: 24, after: 0, line: 240 })).join('')
+}
+
+const LESSON_REPORT_PAGE = {
+  tableLeftMm: 15.05,
+  tableTopMm: 47.91,
+  tableWidthMm: 176.72,
+  colWidthsMm: [51.15, 51.15, 74.43],
+  rowHeightsMm: [8.47, 8.41, 24.93, 115.75, 49.74],
+  footerTopMm: 260.4,
+}
+
+function mmToDxa(mm) {
+  return Math.round((mm / 25.4) * 1440)
+}
+
+const LESSON_REPORT_WORD = {
+  tableWidth: mmToDxa(LESSON_REPORT_PAGE.tableWidthMm),
+  colWidths: LESSON_REPORT_PAGE.colWidthsMm.map(mmToDxa),
+  rowHeights: [6.6, 6.9, 24.93, 115.75, 49.74].map(mmToDxa),
+  leftMargin: mmToDxa(LESSON_REPORT_PAGE.tableLeftMm),
+  topMargin: mmToDxa(LESSON_REPORT_PAGE.tableTopMm),
+  rightMargin: mmToDxa(210 - LESSON_REPORT_PAGE.tableLeftMm - LESSON_REPORT_PAGE.tableWidthMm),
+  bottomMargin: mmToDxa(14),
+}
+
+function wordCell(content, { span = 1, width = LESSON_REPORT_WORD.tableWidth, vMerge = false, padTop = 55, padBottom = 55, padLeft = 120, padRight = 120 } = {}) {
+  const gridSpan = span > 1 ? `<w:gridSpan w:val="${span}"/>` : ''
+  const merge = vMerge ? '<w:vMerge w:val="restart"/>' : ''
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${gridSpan}${merge}<w:tcMar><w:top w:w="${padTop}" w:type="dxa"/><w:left w:w="${padLeft}" w:type="dxa"/><w:bottom w:w="${padBottom}" w:type="dxa"/><w:right w:w="${padRight}" w:type="dxa"/></w:tcMar></w:tcPr>${content}</w:tc>`
+}
+
+function wordRow(cells, height) {
+  return `<w:tr><w:trPr><w:trHeight w:val="${height}" w:hRule="atLeast"/></w:trPr>${cells}</w:tr>`
+}
+
+function crc32(bytes) {
+  let crc = -1
+  for (let i = 0; i < bytes.length; i += 1) {
+    crc ^= bytes[i]
+    for (let j = 0; j < 8; j += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+  }
+  return (crc ^ -1) >>> 0
+}
+
+function dosDateTime(date = new Date()) {
+  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)
+  const day = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
+  return { time, day }
+}
+
+function u16(value) {
+  return [value & 0xff, (value >>> 8) & 0xff]
+}
+
+function u32(value) {
+  return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff]
+}
+
+function makeZip(files) {
+  const encoder = new TextEncoder()
+  const chunks = []
+  const central = []
+  let offset = 0
+  const { time, day } = dosDateTime()
+
+  files.forEach((file) => {
+    const nameBytes = encoder.encode(file.name)
+    const data = typeof file.data === 'string' ? encoder.encode(file.data) : file.data
+    const crc = crc32(data)
+    const local = new Uint8Array([
+      ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(time), ...u16(day),
+      ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(nameBytes.length), ...u16(0),
+    ])
+    chunks.push(local, nameBytes, data)
+    central.push({ file, nameBytes, data, crc, offset, time, day })
+    offset += local.length + nameBytes.length + data.length
+  })
+
+  let centralSize = 0
+  central.forEach((entry) => {
+    const header = new Uint8Array([
+      ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(entry.time), ...u16(entry.day),
+      ...u32(entry.crc), ...u32(entry.data.length), ...u32(entry.data.length), ...u16(entry.nameBytes.length),
+      ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(entry.offset),
+    ])
+    chunks.push(header, entry.nameBytes)
+    centralSize += header.length + entry.nameBytes.length
+  })
+
+  chunks.push(new Uint8Array([
+    ...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length),
+    ...u32(centralSize), ...u32(offset), ...u16(0),
+  ]))
+  return new Blob(chunks, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+}
+
+function buildLessonReportDocx(report) {
+  const attendeeCount = report.attendeeCount || String((report.attendees || '').split(/[、,\s]+/).filter(Boolean).length || '')
+  const { tableWidth, colWidths, rowHeights, topMargin, rightMargin, bottomMargin, leftMargin } = LESSON_REPORT_WORD
+  const unitParagraphs = textToWordParagraphs(`単元　${report.unit || ''}`, { size: 24, after: 0, line: 240 })
+  const contentParagraphs = contentToNumberedWordParagraphs(report.content)
+  const handoffParagraphs = `${wordParagraph('申し送り及び感想：', { bold: true, size: 24, after: 0, line: 240 })}${handoffToBulletWordParagraphs(report.handoff)}`
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+<w:tbl>
+<w:tblPr><w:tblW w:w="${tableWidth}" w:type="dxa"/><w:jc w:val="left"/><w:tblLayout w:type="fixed"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="555555"/><w:left w:val="single" w:sz="4" w:color="555555"/><w:bottom w:val="single" w:sz="4" w:color="555555"/><w:right w:val="single" w:sz="4" w:color="555555"/><w:insideH w:val="single" w:sz="4" w:color="555555"/><w:insideV w:val="single" w:sz="4" w:color="555555"/></w:tblBorders></w:tblPr>
+<w:tblGrid><w:gridCol w:w="${colWidths[0]}"/><w:gridCol w:w="${colWidths[1]}"/><w:gridCol w:w="${colWidths[2]}"/></w:tblGrid>
+${wordRow(`
+${wordCell(wordParagraph(report.dateText, { size: 24, after: 0, line: 220 }), { width: colWidths[0], padTop: 20, padBottom: 20 })}
+${wordCell(wordParagraph(`クラス　　${report.className}`, { size: 24, after: 0, line: 220 }), { width: colWidths[1], padTop: 20, padBottom: 20 })}
+${wordCell(wordParagraph(`担当　　${report.teacherName}`, { size: 24, after: 0, line: 220 }), { width: colWidths[2], padTop: 20, padBottom: 20 })}
+`, rowHeights[0])}
+${wordRow(wordCell(wordParagraph(`出席者　　${report.attendees || ''}　計(${attendeeCount})名`, { size: 24, after: 0, line: 220 }), { span: 3, width: tableWidth, padTop: 20, padBottom: 20 }), rowHeights[1])}
+${wordRow(wordCell(unitParagraphs, { span: 3, width: tableWidth }), rowHeights[2])}
+${wordRow(wordCell(contentParagraphs, { span: 3, width: tableWidth, padTop: 55, padBottom: 55, padLeft: 260, padRight: 260 }), rowHeights[3])}
+${wordRow(wordCell(handoffParagraphs, { span: 3, width: tableWidth, padTop: 55, padBottom: 55, padLeft: 260, padRight: 260 }), rowHeights[4])}
+</w:tbl>
+<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="120"/></w:pPr>${wordRun('日本語ボランティアグループ　　わをん', { size: 24 })}</w:p>
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${topMargin}" w:right="${rightMargin}" w:bottom="${bottomMargin}" w:left="${leftMargin}"/></w:sectPr>
+</w:body></w:document>`
+
+  return makeZip([
+    { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+    { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+    { name: 'word/document.xml', data: documentXml },
+  ])
+}
+
+function buildLessonReportPdfHtml(report) {
+  const attendeeCount = report.attendeeCount || String((report.attendees || '').split(/[、,\s]+/).filter(Boolean).length || '')
+  const contentItems = String(report.content || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const handoffItems = String(report.handoff || '').split(/\r?\n/).map((line) => line.trim().replace(/^●\s*/, '')).filter(Boolean)
+  const page = LESSON_REPORT_PAGE
+  return `<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>${escapeXml(report.className)} ${escapeXml(report.dateText)} 授業記録</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { width: 210mm; height: 297mm; margin: 0; }
+  body { font-family: Meiryo, "Yu Gothic", sans-serif; color: #111; font-size: 11pt; line-height: 1.35; }
+  .page { position: relative; width: 210mm; height: 297mm; overflow: hidden; background: white; }
+  .report {
+    position: absolute;
+    left: ${page.tableLeftMm}mm;
+    top: ${page.tableTopMm}mm;
+    width: ${page.tableWidthMm}mm;
+    height: ${page.rowHeightsMm.reduce((sum, value) => sum + value, 0).toFixed(2)}mm;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .report td { border: 0.18mm solid #555; vertical-align: top; padding: 1.25mm 2.1mm; overflow: hidden; }
+  .row-1 { height: ${page.rowHeightsMm[0]}mm; }
+  .row-2 { height: ${page.rowHeightsMm[1]}mm; }
+  .row-3 { height: ${page.rowHeightsMm[2]}mm; }
+  .row-4 { height: ${page.rowHeightsMm[3]}mm; }
+  .row-5 { height: ${page.rowHeightsMm[4]}mm; }
+  .top td { font-size: 11pt; line-height: 1.25; }
+  .attendees { font-size: 10.5pt; line-height: 1.25; }
+  .unit { font-size: 10.5pt; line-height: 1.42; }
+  .content { padding: 2.1mm 7.5mm 2.1mm 10mm !important; font-weight: 700; font-size: 10.5pt; line-height: 1.45; }
+  .content ol { margin: 0; padding-left: 5.3mm; }
+  .content li { margin: 0 0 1.15mm; padding-left: 1mm; }
+  .handoff { padding: 2.1mm 7.5mm !important; font-weight: 700; font-size: 10.5pt; line-height: 1.45; }
+  .handoff-title { margin: 0 0 1.2mm; }
+  .handoff ul { margin: 0; padding-left: 5mm; }
+  .handoff li { margin: 0 0 1mm; }
+  .footer {
+    position: absolute;
+    left: ${page.tableLeftMm}mm;
+    top: ${page.footerTopMm}mm;
+    width: ${page.tableWidthMm}mm;
+    text-align: right;
+    font-size: 10.5pt;
+  }
+  @media screen { body { background: #eee; } .page { margin: 0 auto; box-shadow: 0 0 0 1px #ddd; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <table class="report">
+    <colgroup><col style="width:${page.colWidthsMm[0]}mm"><col style="width:${page.colWidthsMm[1]}mm"><col style="width:${page.colWidthsMm[2]}mm"></colgroup>
+    <tr class="top row-1">
+      <td>${escapeXml(report.dateText)}</td>
+      <td>クラス　　${escapeXml(report.className)}</td>
+      <td>担当　　${escapeXml(report.teacherName)}</td>
+    </tr>
+    <tr class="row-2"><td colspan="3" class="attendees">出席者　　${escapeXml(report.attendees || '')}　計(${escapeXml(attendeeCount)})名</td></tr>
+    <tr class="row-3"><td colspan="3" class="unit">単元　${escapeXml(report.unit || '').replace(/\n/g, '<br>')}</td></tr>
+    <tr class="row-4"><td colspan="3" class="content"><ol>${(contentItems.length ? contentItems : ['']).map((line) => `<li>${escapeXml(line)}</li>`).join('')}</ol></td></tr>
+    <tr class="row-5"><td colspan="3" class="handoff"><div class="handoff-title">申し送り及び感想：</div><ul>${(handoffItems.length ? handoffItems : ['']).map((line) => `<li>${escapeXml(line)}</li>`).join('')}</ul></td></tr>
+  </table>
+  <div class="footer">日本語ボランティアグループ　　わをん</div>
+</div>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 150));</script>
+</body>
+</html>`
+}
+
+function buildLessonReportPdfElement(report) {
+  const attendeeCount = report.attendeeCount || String((report.attendees || '').split(/[、,\s]+/).filter(Boolean).length || '')
+  const contentItems = String(report.content || '').split(/\r?\n/).map((line) => line.trim().replace(/^\d+[.)．、]\s*/, '').replace(/\*\*/g, '')).filter(Boolean)
+  const handoffItems = String(report.handoff || '').split(/\r?\n/).map((line) => line.trim().replace(/^●\s*/, '').replace(/\*\*/g, '')).filter(Boolean)
+  const page = LESSON_REPORT_PAGE
+  const root = document.createElement('div')
+  root.style.position = 'fixed'
+  root.style.left = '-10000px'
+  root.style.top = '0'
+  root.style.width = '210mm'
+  root.style.minHeight = '297mm'
+  root.style.background = '#fff'
+  root.style.fontFamily = 'Meiryo, "Yu Gothic", sans-serif'
+  root.style.color = '#111'
+  root.style.fontSize = '12pt'
+  root.style.lineHeight = '1.45'
+  root.innerHTML = `
+    <div style="position:relative;width:210mm;min-height:297mm;background:#fff;">
+      <table data-report-table="true" style="position:absolute;left:${page.tableLeftMm}mm;top:${page.tableTopMm}mm;width:${page.tableWidthMm}mm;border-collapse:collapse;table-layout:fixed;">
+        <colgroup>
+          <col style="width:${page.colWidthsMm[0]}mm">
+          <col style="width:${page.colWidthsMm[1]}mm">
+          <col style="width:${page.colWidthsMm[2]}mm">
+        </colgroup>
+        <tr style="height:${page.rowHeightsMm[0]}mm;">
+          <td style="border:0.18mm solid #555;vertical-align:top;padding:1.2mm 1.85mm 0.6mm;overflow:hidden;font-size:12pt;line-height:1.15;">${escapeXml(report.dateText)}</td>
+          <td style="border:0.18mm solid #555;vertical-align:top;padding:1.2mm 1.85mm 0.6mm;overflow:hidden;font-size:12pt;line-height:1.15;">クラス　　${escapeXml(report.className)}</td>
+          <td style="border:0.18mm solid #555;vertical-align:top;padding:1.2mm 1.85mm 0.6mm;overflow:hidden;font-size:12pt;line-height:1.15;">担当　　${escapeXml(report.teacherName)}</td>
+        </tr>
+        <tr style="height:${page.rowHeightsMm[1]}mm;">
+          <td colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.15mm 1.85mm 0.6mm;overflow:hidden;font-size:12pt;line-height:1.18;">出席者　　${escapeXml(report.attendees || '')}　計(${escapeXml(attendeeCount)})名</td>
+        </tr>
+        <tr style="height:${page.rowHeightsMm[2]}mm;">
+          <td colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.15mm 1.85mm;overflow:hidden;font-size:12pt;line-height:1.46;">単元　${escapeXml(report.unit || '').replace(/\n/g, '<br>')}</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.45mm 7.5mm 1.45mm 9.7mm;font-weight:700;font-size:12pt;line-height:1.46;">
+            <div style="min-height:${page.rowHeightsMm[3] - 3.2}mm;">
+            <ol style="margin:0;padding-left:5.4mm;">${(contentItems.length ? contentItems : ['']).map((line) => `<li style="margin:0 0 1.0mm 0;padding-left:0.7mm;">${escapeXml(line)}</li>`).join('')}</ol>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.45mm 7.5mm;font-weight:700;font-size:12pt;line-height:1.46;">
+            <div style="min-height:${page.rowHeightsMm[4] - 3.2}mm;">
+            <div style="margin:0;">申し送り及び感想：</div>
+            <ul style="margin:0;padding-left:5mm;">${(handoffItems.length ? handoffItems : ['']).map((line) => `<li style="margin:0 0 0.7mm 0;">${escapeXml(line)}</li>`).join('')}</ul>
+            </div>
+          </td>
+        </tr>
+      </table>
+      <div data-report-footer="true" style="position:absolute;left:${page.tableLeftMm}mm;top:${page.footerTopMm}mm;width:${page.tableWidthMm}mm;text-align:right;font-size:12pt;">日本語ボランティアグループ　　わをん</div>
+    </div>
+  `
+  return root
+}
+
 function ScrollNav({ sections, activeSection, navOpen, onToggle }) {
   function scrollTo(id) {
     const el = document.getElementById(id)
@@ -363,6 +662,7 @@ export default function App() {
   const [uiMode, setUiMode] = useState(loadUiMode)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
   const [mobileAdminPanel, setMobileAdminPanel] = useState('sessions')
+  const [activeLessonReportId, setActiveLessonReportId] = useState('')
   const [navOpen, setNavOpen] = useState(false)
   const [showNewBulletin, setShowNewBulletin] = useState(false)
   const [newBulletinText, setNewBulletinText] = useState('')
@@ -399,6 +699,7 @@ export default function App() {
     archivedSchedules,
     meetingNotesByMonth,
     myMemosByTeacher,
+    lessonReportsByMonth,
     bulletinBoard,
   } = state
 
@@ -976,6 +1277,103 @@ export default function App() {
     }))
   }
 
+  function updateLessonReport(reportId, updates) {
+    if (!reportId) return
+    setState((s) => ({
+      ...s,
+      lessonReportsByMonth: {
+        ...(s.lessonReportsByMonth ?? {}),
+        [monthKey]: {
+          ...((s.lessonReportsByMonth ?? {})[monthKey] ?? {}),
+          [reportId]: {
+            ...(((s.lessonReportsByMonth ?? {})[monthKey] ?? {})[reportId] ?? {}),
+            ...updates,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      },
+    }))
+  }
+
+  function setLessonReportField(reportId, field, value) {
+    updateLessonReport(reportId, { [field]: value })
+  }
+
+  function normalizeLessonReportForExport(report) {
+    return {
+      ...report,
+      attendeeCount: report.attendeeCount || String((report.attendees || '').split(/[、,\s]+/).filter(Boolean).length || ''),
+    }
+  }
+
+  function lessonReportFileBase(report) {
+    return `${report.className}_${report.dateText.replace(/[（）/]/g, '-')}_授業記録`
+  }
+
+  function downloadBlob(blob, fileName) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportLessonReportDocx(report) {
+    if (!report) return
+    const normalized = normalizeLessonReportForExport(report)
+    downloadBlob(buildLessonReportDocx(normalized), `${lessonReportFileBase(report)}.docx`)
+  }
+
+  async function exportLessonReportPdf(report) {
+    if (!report) return
+    const normalized = normalizeLessonReportForExport(report)
+    const reportElement = buildLessonReportPdfElement(normalized)
+    document.body.appendChild(reportElement)
+    try {
+      await document.fonts?.ready
+      const pxPerMm = reportElement.getBoundingClientRect().width / 210
+      const table = reportElement.querySelector('[data-report-table="true"]')
+      const footer = reportElement.querySelector('[data-report-footer="true"]')
+      if (table && footer) {
+        const rootTop = reportElement.getBoundingClientRect().top
+        const tableBottom = table.getBoundingClientRect().bottom - rootTop
+        const footerTop = Math.max(LESSON_REPORT_PAGE.footerTopMm * pxPerMm, tableBottom + 4 * pxPerMm)
+        const pageHeight = 297 * pxPerMm
+        const totalHeight = Math.max(pageHeight, footerTop + 12 * pxPerMm)
+        footer.style.top = `${footerTop}px`
+        reportElement.style.height = `${totalHeight}px`
+        reportElement.firstElementChild.style.height = `${totalHeight}px`
+      }
+      const canvas = await html2canvas(reportElement, {
+        backgroundColor: '#ffffff',
+        scale: 2.5,
+        useCORS: true,
+        logging: false,
+      })
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true })
+      const pageHeightPx = Math.floor(canvas.width * (297 / 210))
+      for (let offsetY = 0, pageIndex = 0; offsetY < canvas.height; offsetY += pageHeightPx, pageIndex += 1) {
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - offsetY)
+        const pageCanvas = document.createElement('canvas')
+        pageCanvas.width = canvas.width
+        pageCanvas.height = pageHeightPx
+        const context = pageCanvas.getContext('2d')
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
+        context.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
+        if (pageIndex > 0) pdf.addPage()
+        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, 210, 297)
+      }
+      const pdfBlob = pdf.output('blob')
+      downloadBlob(pdfBlob, `${lessonReportFileBase(report)}.pdf`)
+    } catch (error) {
+      window.alert(`PDF出力に失敗しました。\n${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      reportElement.remove()
+    }
+  }
+
   function createBulletin() {
     const msg = newBulletinText.trim()
     if (!msg) return
@@ -1145,6 +1543,7 @@ export default function App() {
     { id: 'schedule', label: '担当表', adminOnly: false },
     { id: 'sessions', label: '各回設定', adminOnly: true },
     { id: 'settings', label: '先生・クラス設定', adminOnly: true },
+    { id: 'lessonReports', label: '授業記録', adminOnly: false },
     { id: 'collab', label: '伝言板・メモ', adminOnly: false },
   ]
   const mobileNavSections = [
@@ -1153,6 +1552,7 @@ export default function App() {
     { id: 'schedule', label: '担当表', shortLabel: '担当', adminOnly: false },
     { id: 'mobileAdmin', label: '管理', shortLabel: '管理', adminOnly: true },
     { id: 'mobileMemo', label: 'メモ・連絡板', shortLabel: 'メモ', adminOnly: false },
+    { id: 'mobileLessonReports', label: '授業記録', shortLabel: '記録', adminOnly: false },
   ]
 
   // IntersectionObserver for scroll nav active state — must be before conditional return
@@ -1189,6 +1589,42 @@ export default function App() {
     editableSessions.some((session) => attendance[teacher.name]?.[session.key] !== undefined)
   )).length
   const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
+  const lessonReports = lessonReportsByMonth?.[monthKey] ?? {}
+  const lessonReportOptions = schedule.flatMap((session) => (
+    session.closed ? [] : Object.entries(session.assignments || {}).map(([className, teacherName]) => ({
+      id: `${session.key}__${className}`,
+      sessionKey: session.key,
+      sessionLabel: session.label,
+      dateText: `${session.label}（土）`,
+      label: `${session.label} ${className}`,
+      className,
+      teacherName,
+      status: (() => {
+        const report = lessonReports[`${session.key}__${className}`]
+        if (!report) return '未入力'
+        return report.unit && report.content && report.handoff ? '完了' : '下書き'
+      })(),
+    }))
+  ))
+  const selectedLessonReportId = lessonReportOptions.some((item) => item.id === activeLessonReportId)
+    ? activeLessonReportId
+    : (lessonReportOptions[0]?.id ?? '')
+  const selectedLessonOption = lessonReportOptions.find((item) => item.id === selectedLessonReportId)
+  const selectedLessonReport = selectedLessonOption ? {
+    ...selectedLessonOption,
+    attendees: '',
+    attendeeCount: '',
+    unit: '',
+    content: '',
+    handoff: '',
+    ...(lessonReports[selectedLessonOption.id] ?? {}),
+    } : null
+  const lessonReportGroups = schedule.filter((session) => !session.closed).map((session) => {
+    const items = lessonReportOptions.filter((option) => option.sessionKey === session.key)
+    const doneCount = items.filter((item) => item.status === '完了').length
+    return { sessionKey: session.key, label: session.label, items, doneCount }
+  }).filter((group) => group.items.length > 0)
+  const selectedLessonGroup = lessonReportGroups.find((group) => group.sessionKey === selectedLessonOption?.sessionKey) ?? lessonReportGroups[0]
   const effectiveUiMode = uiMode === 'auto' ? (isMobileViewport ? 'mobile' : 'desktop') : uiMode
   const canUseView = (sections, id) => sections.some((item) => item.id === id && (!item.adminOnly || isAdmin))
   const currentDesktopView = canUseView(navSections, activeView) ? activeView : 'home'
@@ -1818,6 +2254,129 @@ export default function App() {
     )
   }
 
+  function LessonReportFields({ report, compact = false }) {
+    if (!report) return <p className="empty-msg">担当がある授業がまだありません。</p>
+    const canEditReport = isAdmin || report.teacherName === identity
+    const countValue = report.attendeeCount || String((report.attendees || '').split(/[、,\s]+/).filter(Boolean).length || '')
+    return (
+      <div className={compact ? 'lesson-form lesson-form-compact' : 'lesson-form'}>
+        <section className="lesson-form-card">
+          <h2>{report.dateText} {report.className}</h2>
+          <div className="lesson-basic-grid">
+            <label><span>日付</span><input value={report.dateText} onChange={(e) => setLessonReportField(report.id, 'dateText', e.target.value)} disabled={!canEditReport} /></label>
+            <label><span>クラス</span><input value={report.className} onChange={(e) => setLessonReportField(report.id, 'className', e.target.value)} disabled={!canEditReport} /></label>
+            <label><span>担当</span><input value={report.teacherName} onChange={(e) => setLessonReportField(report.id, 'teacherName', e.target.value)} disabled={!canEditReport} /></label>
+          </div>
+        </section>
+
+        <section className="lesson-form-card">
+          <div className="lesson-card-title"><h3>出席者</h3><span>計{countValue || 0}名</span></div>
+          <textarea value={report.attendees || ''} onChange={(e) => setLessonReportField(report.id, 'attendees', e.target.value)} placeholder="孟莉（中）伊藤（中）鈴木（中）..." rows={compact ? 4 : 3} disabled={!canEditReport} />
+          <label className="lesson-count-field"><span>人数</span><input value={report.attendeeCount || ''} onChange={(e) => setLessonReportField(report.id, 'attendeeCount', e.target.value)} placeholder="5" disabled={!canEditReport} /></label>
+        </section>
+
+        <section className="lesson-form-card">
+          <h3>単元</h3>
+          <textarea value={report.unit || ''} onChange={(e) => setLessonReportField(report.id, 'unit', e.target.value)} placeholder="いろどり初級2 11課 / 中級から学ぶ日本語 p32..." rows={compact ? 4 : 3} disabled={!canEditReport} />
+        </section>
+
+        <section className="lesson-form-card">
+          <h3>授業内容</h3>
+          <textarea className="lesson-long-textarea" value={report.content || ''} onChange={(e) => setLessonReportField(report.id, 'content', e.target.value)} placeholder="本日扱った内容、練習した文型、活動内容など..." rows={compact ? 9 : 10} disabled={!canEditReport} />
+        </section>
+
+        <section className="lesson-form-card">
+          <h3>申し送り及び感想</h3>
+          <textarea value={report.handoff || ''} onChange={(e) => setLessonReportField(report.id, 'handoff', e.target.value)} placeholder="次回進めるページ、コピー状況、注意点など..." rows={compact ? 6 : 5} disabled={!canEditReport} />
+        </section>
+      </div>
+    )
+  }
+
+  function LessonReportPreview({ report }) {
+    if (!report) return null
+    return (
+      <div className="lesson-word-preview">
+        <strong>日本語ボランティアグループ　わをん</strong>
+        <div className="lesson-preview-grid">
+          <span>{report.dateText}</span>
+          <span>クラス {report.className}</span>
+          <span>担当 {report.teacherName}</span>
+        </div>
+        <p>出席者 {report.attendees || '未入力'}　計{report.attendeeCount || '0'}名</p>
+        <p>単元 {report.unit || '未入力'}</p>
+        <p>{report.content || '授業内容を入力するとここに表示されます。'}</p>
+        <p>申し送り及び感想：{report.handoff || '未入力'}</p>
+      </div>
+    )
+  }
+
+  function LessonReportsView() {
+    return (
+      <section id="lessonReports" className="screen-view">
+        <AppHeader
+          title="授業記録"
+          subtitle="授業後の報告書を作成して、Word形式で保存します。"
+          actions={<div className="action-row"><button type="button" className="primary-btn" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button><button type="button" className="ghost-btn" disabled={!selectedLessonReport}>保存済み</button></div>}
+        />
+        <div className="lesson-layout">
+          <main>
+            <div className="lesson-selector-row">
+              <label className="field-block">
+                <span>日付</span>
+                <select value={selectedLessonGroup?.sessionKey ?? ''} onChange={(e) => {
+                  const group = lessonReportGroups.find((item) => item.sessionKey === e.target.value)
+                  setActiveLessonReportId(group?.items[0]?.id ?? '')
+                }}>
+                  {lessonReportGroups.map((group) => <option key={group.sessionKey} value={group.sessionKey}>{group.label}</option>)}
+                </select>
+              </label>
+              <label className="field-block">
+                <span>授業</span>
+                <select value={selectedLessonReportId} onChange={(e) => setActiveLessonReportId(e.target.value)}>
+                  {(selectedLessonGroup?.items ?? []).map((option) => <option key={option.id} value={option.id}>{option.className} / {option.teacherName}</option>)}
+                </select>
+              </label>
+            </div>
+            {LessonReportFields({ report: selectedLessonReport })}
+          </main>
+          <aside className="lesson-side">
+            <section className="panel">
+              <h2>今月の授業記録</h2>
+              <div className="lesson-report-list">
+                {lessonReportGroups.map((group) => {
+                  const isOpen = group.sessionKey === selectedLessonGroup?.sessionKey
+                  return (
+                    <div key={group.sessionKey} className={`lesson-report-group ${isOpen ? 'open' : ''}`}>
+                      <button type="button" className="lesson-report-date-btn" onClick={() => setActiveLessonReportId(group.items[0]?.id ?? '')}>
+                        <span>{group.label}</span>
+                        <strong>{group.doneCount}/{group.items.length}</strong>
+                      </button>
+                      {isOpen ? (
+                        <div className="lesson-report-sublist">
+                          {group.items.map((option) => (
+                            <button key={option.id} type="button" className={option.id === selectedLessonReportId ? 'active' : ''} onClick={() => setActiveLessonReportId(option.id)}>
+                              <span>{option.className}</span>
+                              <strong>{option.status}</strong>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+            <section className="panel">
+              <h2>Wordプレビュー</h2>
+              {LessonReportPreview({ report: selectedLessonReport })}
+            </section>
+          </aside>
+        </div>
+      </section>
+    )
+  }
+
   function getStatusInfo(teacherName, sessionKey) {
     const statusId = getEffectiveStatus(teacherName, sessionKey)
     const option = statusOptions.find((item) => item.id === statusId)
@@ -2229,12 +2788,56 @@ export default function App() {
     )
   }
 
+  function MobileLessonReportsView() {
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title="授業記録" subtitle="授業後の報告書" />
+        <section className="mobile-card-list">
+          <div className="mobile-section-title">
+            <h2>記録を選ぶ</h2>
+            <button type="button" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button>
+            <button type="button" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button>
+          </div>
+          <select value={selectedLessonGroup?.sessionKey ?? ''} onChange={(e) => {
+            const group = lessonReportGroups.find((item) => item.sessionKey === e.target.value)
+            setActiveLessonReportId(group?.items[0]?.id ?? '')
+          }}>
+            {lessonReportGroups.map((group) => <option key={group.sessionKey} value={group.sessionKey}>{group.label}</option>)}
+          </select>
+          <select value={selectedLessonReportId} onChange={(e) => setActiveLessonReportId(e.target.value)}>
+            {(selectedLessonGroup?.items ?? []).map((option) => <option key={option.id} value={option.id}>{option.className} / {option.teacherName}</option>)}
+          </select>
+          <div className="mobile-lesson-sublist">
+            {(selectedLessonGroup?.items ?? []).map((option) => (
+              <button key={option.id} type="button" className={option.id === selectedLessonReportId ? 'active' : ''} onClick={() => setActiveLessonReportId(option.id)}>
+                <span>{option.className}</span>
+                <strong>{option.status}</strong>
+              </button>
+            ))}
+          </div>
+          {selectedLessonReport ? <span className={`mobile-status-pill ${selectedLessonReport.updatedAt ? 'yes' : 'maybe'}`}>{selectedLessonReport.updatedAt ? '保存済み' : '未入力'}</span> : null}
+        </section>
+        {LessonReportFields({ report: selectedLessonReport, compact: true })}
+        <section className="mobile-card-list">
+          <h2>Wordプレビュー</h2>
+          {LessonReportPreview({ report: selectedLessonReport })}
+        </section>
+        <div className="mobile-lesson-actions">
+          <button type="button" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button>
+          <button type="button" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button>
+          <button type="button" disabled={!selectedLessonReport}>保存済み</button>
+        </div>
+      </section>
+    )
+  }
+
   const views = {
     home: HomeView(),
     attendance: AttendanceView(),
     schedule: ScheduleView(),
     sessions: SessionsView(),
     settings: SettingsView(),
+    lessonReports: LessonReportsView(),
     collab: CollabView(),
   }
   const mobileViews = {
@@ -2243,6 +2846,7 @@ export default function App() {
     schedule: MobileScheduleView(),
     mobileAdmin: MobileAdminView(),
     mobileMemo: MobileMemoView(),
+    mobileLessonReports: MobileLessonReportsView(),
   }
 
   return (
