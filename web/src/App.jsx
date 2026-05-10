@@ -573,8 +573,8 @@ function ModeSwitch({ uiMode, onChange, compact = false }) {
     <div className={compact ? 'ui-mode-switch ui-mode-switch-compact' : 'ui-mode-switch'} aria-label="UI表示切替">
       {[
         { id: 'auto', label: '自動' },
-        { id: 'desktop', label: '桌面' },
-        { id: 'mobile', label: '手机' },
+        { id: 'desktop', label: 'デスクトップ' },
+        { id: 'mobile', label: 'スマホ' },
       ].map((mode) => (
         <button key={mode.id} type="button" className={uiMode === mode.id ? 'active' : ''} onClick={() => onChange(mode.id)}>
           {mode.label}
@@ -2048,7 +2048,7 @@ export default function App() {
   function SettingsView() {
     return (
       <section id="settings" className="screen-view">
-        <AppHeader title="先生・クラス設定" subtitle="排班ルールの中心。先生ごとの担当可能クラスとデフォルト出欠を管理します。" actions={isAdmin ? <button type="button" className="primary-btn" onClick={addTeacher}>先生を追加</button> : null} />
+        <AppHeader title="先生・クラス設定" subtitle="割当ルールの中心。先生ごとの担当可能クラスとデフォルト出欠を管理します。" actions={isAdmin ? <button type="button" className="primary-btn" onClick={addTeacher}>先生を追加</button> : null} />
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -2463,7 +2463,7 @@ export default function App() {
         <div className="mobile-metrics">
           <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${sessionTypeLabel(nextSession)}` : 'なし'}</strong></div>
           <div><span>出席入力</span><strong>{mobileAttendanceDoneCount}/{teachers.length}</strong></div>
-          <div className={unassignedCount > 0 ? 'is-warn' : 'is-ok'}><span>未分配</span><strong>{unassignedCount}</strong></div>
+          <div className={unassignedCount > 0 ? 'is-warn' : 'is-ok'}><span>未担当</span><strong>{unassignedCount}</strong></div>
           <div><span>代替候補</span><strong>{substituteCount}</strong></div>
         </div>
         <div className="mobile-quick-actions">
@@ -2563,7 +2563,7 @@ export default function App() {
                   <strong>{session.label}</strong>
                   <span>{sessionTypeLabel(session)}</span>
                 </div>
-                {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未分配</span> : <span className="mobile-status-pill yes">OK</span>}
+                {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未担当</span> : <span className="mobile-status-pill yes">OK</span>}
               </div>
               {session.closed ? (
                 <p className="mobile-card-note">わをん休み</p>
@@ -2688,7 +2688,7 @@ export default function App() {
             <h2>アーカイブ</h2>
             <div className="mobile-quick-actions">
               <button type="button" onClick={finalizeMonth}>今月を確定</button>
-              <button type="button" onClick={exportMonthTable}>月表保存</button>
+              <button type="button" onClick={exportMonthTable}>月表を保存</button>
               <button type="button" onClick={exportHtmlTable}>HTML出力</button>
             </div>
             {archiveEntries.length === 0 ? <p className="mobile-empty">まだ確定済みの月はありません。</p> : archiveEntries.map(([key, arc]) => (
@@ -2771,7 +2771,7 @@ export default function App() {
             <article key={`memo-${session.key}`} className={`mobile-memo-session-card ${session.closed ? 'is-disabled' : ''}`}>
               <div className="mobile-card-head">
                 <div><strong>{session.label}</strong><span>{sessionTypeLabel(session)}</span></div>
-                {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未分配</span> : null}
+                {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未担当</span> : null}
               </div>
               {!session.closed ? (
                 <div className="mobile-memo-facts">
