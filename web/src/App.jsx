@@ -1832,6 +1832,26 @@ export default function App() {
     return 'no'
   }
 
+  function MobileMonthControls() {
+    return (
+      <div className="mobile-month-controls" aria-label="月を選ぶ">
+        <label>
+          <span>年</span>
+          <input type="number" value={year} min={2020} max={2040} onChange={(e) => { const v = parseInt(e.target.value, 10); if (v >= 2020 && v <= 2040) setYear(v) }} />
+        </label>
+        <label>
+          <span>月</span>
+          <select value={month} onChange={(e) => setMonth(parseInt(e.target.value, 10))}>
+            {MONTH_JP.map((label, i) => <option key={i + 1} value={i + 1}>{label}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={() => { const now = new Date(); setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }}>
+          今月
+        </button>
+      </div>
+    )
+  }
+
   function sessionTypeLabel(session) {
     if (session.closed) return '休み'
     if (session.meeting) return '例会'
@@ -1857,6 +1877,7 @@ export default function App() {
           <span>{isAdmin ? '管理者' : '本人'}</span>
         </button>
         <UiModeSwitch compact />
+        <MobileMonthControls />
       </header>
     )
   }
@@ -2164,6 +2185,38 @@ export default function App() {
         <section className="mobile-card-list">
           <h2>自分メモ</h2>
           <textarea className="mobile-textarea" value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモ..." rows={5} />
+        </section>
+        {schedule.filter((session) => session.meeting && !session.closed).length > 0 ? (
+          <section className="mobile-card-list">
+            <h2>例会記録</h2>
+            {schedule.filter((session) => session.meeting && !session.closed).map((session) => (
+              <article key={`meeting-${session.key}`} className="mobile-memo-session-card">
+                <div className="mobile-card-head">
+                  <div><strong>{session.label}</strong><span>例会</span></div>
+                </div>
+                <textarea className="mobile-textarea" value={meetingNotes[session.key] ?? ''} onChange={(e) => setMeetingNote(session.key, e.target.value)} placeholder="議事録・決定事項・次回への連絡..." rows={5} />
+              </article>
+            ))}
+          </section>
+        ) : null}
+        <section className="mobile-card-list">
+          <h2>各回メモ</h2>
+          {schedule.map((session) => (
+            <article key={`memo-${session.key}`} className={`mobile-memo-session-card ${session.closed ? 'is-disabled' : ''}`}>
+              <div className="mobile-card-head">
+                <div><strong>{session.label}</strong><span>{sessionTypeLabel(session)}</span></div>
+                {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未分配</span> : null}
+              </div>
+              {!session.closed ? (
+                <div className="mobile-memo-facts">
+                  <span>来る人: {session.selectedTeachers.join('、') || 'なし'}</span>
+                  <span>例会のみ: {session.meetingOnlyTeachers.join('、') || 'なし'}</span>
+                  {session.selectedMaybeTeachers.length > 0 ? <span>△から追加: {session.selectedMaybeTeachers.join('、')}</span> : null}
+                </div>
+              ) : <p className="mobile-card-note">わをん休み</p>}
+              <textarea className="mobile-textarea" value={memos[session.key] ?? ''} onChange={(e) => setMemo(session.key, e.target.value)} placeholder="この回の連絡・記録を書く..." rows={4} />
+            </article>
+          ))}
         </section>
       </section>
     )
