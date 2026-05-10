@@ -1840,7 +1840,11 @@ export default function App() {
       <div className="mobile-month-controls" aria-label="月を選ぶ">
         <label>
           <span>年</span>
-          <input type="number" value={year} min={2020} max={2040} onChange={(e) => { const v = parseInt(e.target.value, 10); if (v >= 2020 && v <= 2040) setYear(v) }} />
+          <select value={year} onChange={(e) => setYear(parseInt(e.target.value, 10))}>
+            {Array.from({ length: 21 }, (_, i) => 2020 + i).map((value) => (
+              <option key={value} value={value}>{value}年</option>
+            ))}
+          </select>
         </label>
         <label>
           <span>月</span>
