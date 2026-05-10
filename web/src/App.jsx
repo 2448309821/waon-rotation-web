@@ -2259,14 +2259,13 @@ export default function App() {
 
   function LessonReportFields({ report, compact = false }) {
     if (!report) return <p className="empty-msg">担当がある授業がまだありません。</p>
-    const canEditReport = isAdmin || report.teacherName === identity
+    const canEditReport = !!identity
     const countValue = report.attendeeCount || String((report.attendees || '').split(/[、,\s]+/).filter(Boolean).length || '')
     return (
       <div className={compact ? 'lesson-form lesson-form-compact' : 'lesson-form'}>
         <section className="lesson-form-card">
           <h2>{report.dateText} {report.className}</h2>
           {isMonthLocked ? <p className="lesson-edit-note">この月は確定済みですが、授業記録は編集できます。</p> : null}
-          {!canEditReport ? <p className="lesson-edit-note is-warning">担当者または管理者だけが編集できます。</p> : null}
           <div className="lesson-basic-grid">
             <label><span>日付</span><input value={report.dateText} onChange={(e) => setLessonReportField(report.id, 'dateText', e.target.value)} disabled={!canEditReport} /></label>
             <label><span>クラス</span><input value={report.className} onChange={(e) => setLessonReportField(report.id, 'className', e.target.value)} disabled={!canEditReport} /></label>
