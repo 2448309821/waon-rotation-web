@@ -1917,25 +1917,6 @@ textarea::placeholder {
   margin-top: var(--space-3);
 }
 
-.mini-counter { display: inline-flex; align-items: center; gap: 4px; }
-.mini-counter-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--table-grid); background: var(--color-surface); font-size: 1.1rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
-.mini-counter-value { min-width: 28px; text-align: center; font-weight: 700; font-size: 1rem; }
-.student-default-list { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
-.student-default-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--table-cell-bg); border: 1px solid var(--table-grid); }
-.student-default-label { min-width: 90px; font-weight: 700; font-size: 0.92rem; }
-.session-student-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--table-cell-bg); border: 1px dashed var(--table-grid); }
-.student-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--table-cell-bg); border: 1px solid var(--table-grid); font-size: 0.88rem; }
-.student-chip span { font-weight: 600; }
-.student-total { margin-left: auto; font-weight: 700; font-size: 0.95rem; color: var(--color-primary); }
-.schedule-totals { margin-top: var(--space-4); padding: var(--space-3); border-radius: var(--radius-md); border: 2px solid var(--table-grid); background: var(--table-cell-bg); }
-.schedule-totals-header { font-weight: 700; font-size: 0.95rem; margin-bottom: var(--space-2); }
-.schedule-totals-grid { display: flex; flex-direction: column; gap: 2px; }
-.totals-row { display: flex; align-items: center; }
-.totals-label { width: 110px; flex-shrink: 0; font-weight: 600; font-size: 0.88rem; padding: var(--space-1) var(--space-2); }
-.totals-cell { flex: 1; text-align: center; font-size: 0.92rem; font-weight: 500; padding: var(--space-1) 0; }
-.totals-row-em { font-weight: 700; font-size: 1rem; border-top: 2px solid var(--table-grid); padding-top: 4px; }
-.totals-row-em .totals-cell { font-weight: 700; font-size: 1rem; }
-
 .special-rule-row.compact {
   align-items: center;
 }
