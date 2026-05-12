@@ -15,6 +15,19 @@ import {
 } from './schedule'
 import { ROTATION_STATE_ID, supabase } from './supabase'
 
+function AutoTextarea({ value, onChange, rows = 3, style, ...props }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }, [value])
+  return (
+    <textarea ref={ref} value={value} onChange={onChange} rows={rows} style={{ resize: 'none', overflowY: 'hidden', ...style }} {...props} />
+  )
+}
+
 const STORAGE_KEY = 'rotation-web-state-v7'
 const IDENTITY_KEY = 'rotation-web-identity-v1'
 const TEXT_SCALE_KEY = 'rotation-web-text-scale-v1'
@@ -2211,12 +2224,12 @@ export default function App() {
             {isMonthLocked ? <p className="lesson-edit-note">この月は確定済みですが、メモと会議記録は編集できます。</p> : null}
             <div className="my-memo-card">
               <div className="my-memo-header"><div><h3>My Memo</h3><p>{identity} さん用の個人メモです。</p></div></div>
-              <textarea value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモを書けます..." rows={5} />
+              <AutoTextarea value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモを書けます..." rows={5} />
             </div>
             {schedule.filter((s) => s.meeting && !s.closed).map((session) => (
               <div key={session.key} className="meeting-note-card">
                 <strong>{session.label} 会議記録</strong>
-                <textarea value={meetingNotes[session.key] ?? ''} onChange={(e) => setMeetingNote(session.key, e.target.value)} placeholder="議事録・決定事項・次回への伝達事項" rows={5} />
+                <AutoTextarea value={meetingNotes[session.key] ?? ''} onChange={(e) => setMeetingNote(session.key, e.target.value)} placeholder="議事録・決定事項・次回への伝達事項" rows={5} />
               </div>
             ))}
             <div className="memo-list compact">
@@ -2231,7 +2244,7 @@ export default function App() {
                       {session.unassignedClasses?.length > 0 ? <p className="memo-warn">未担当: {session.unassignedClasses.join('、')}</p> : null}
                     </>
                   )}
-                  <textarea value={memos[session.key] ?? ''} onChange={(e) => setMemo(session.key, e.target.value)} placeholder="自由に書き込めます..." rows={3} />
+                  <AutoTextarea value={memos[session.key] ?? ''} onChange={(e) => setMemo(session.key, e.target.value)} placeholder="自由に書き込めます..." rows={3} />
                 </article>
               ))}
             </div>
@@ -2755,7 +2768,7 @@ export default function App() {
         <section className="mobile-card-list">
           <h2>自分メモ</h2>
           {isMonthLocked ? <p className="mobile-help-text">確定済みの月でもメモは編集できます。</p> : null}
-          <textarea className="mobile-textarea" value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモ..." rows={5} />
+          <AutoTextarea className="mobile-textarea" value={myMemo} onChange={(e) => setMyMemo(e.target.value)} placeholder="自分だけのメモ..." rows={5} />
         </section>
         {schedule.filter((session) => session.meeting && !session.closed).length > 0 ? (
           <section className="mobile-card-list">
@@ -2765,7 +2778,7 @@ export default function App() {
                 <div className="mobile-card-head">
                   <div><strong>{session.label}</strong><span>例会</span></div>
                 </div>
-                <textarea className="mobile-textarea" value={meetingNotes[session.key] ?? ''} onChange={(e) => setMeetingNote(session.key, e.target.value)} placeholder="議事録・決定事項・次回への連絡..." rows={5} />
+                <AutoTextarea className="mobile-textarea" value={meetingNotes[session.key] ?? ''} onChange={(e) => setMeetingNote(session.key, e.target.value)} placeholder="議事録・決定事項・次回への連絡..." rows={5} />
               </article>
             ))}
           </section>
@@ -2785,7 +2798,7 @@ export default function App() {
                   {session.selectedMaybeTeachers.length > 0 ? <span>△から追加: {session.selectedMaybeTeachers.join('、')}</span> : null}
                 </div>
               ) : <p className="mobile-card-note">わをん休み</p>}
-              <textarea className="mobile-textarea" value={memos[session.key] ?? ''} onChange={(e) => setMemo(session.key, e.target.value)} placeholder="この回の連絡・記録を書く..." rows={4} />
+              <AutoTextarea className="mobile-textarea" value={memos[session.key] ?? ''} onChange={(e) => setMemo(session.key, e.target.value)} placeholder="この回の連絡・記録を書く..." rows={4} />
             </article>
           ))}
         </section>
