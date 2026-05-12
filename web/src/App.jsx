@@ -88,8 +88,6 @@ function buildFallbackState() {
     meetingNotesByMonth: {},
     myMemosByTeacher: {},
     lessonReportsByMonth: {},
-    studentDefaults: {},
-    attendanceCountsByMonth: {},
     bulletinBoard: [],
   }
 }
@@ -121,8 +119,6 @@ function mergeState(saved) {
     meetingNotesByMonth: saved.meetingNotesByMonth ?? {},
     myMemosByTeacher: saved.myMemosByTeacher ?? {},
     lessonReportsByMonth: saved.lessonReportsByMonth ?? {},
-    studentDefaults: saved.studentDefaults ?? {},
-    attendanceCountsByMonth: saved.attendanceCountsByMonth ?? {},
     bulletinBoard: Array.isArray(saved.bulletinBoard) ? saved.bulletinBoard : [],
   }
 }
@@ -719,8 +715,6 @@ export default function App() {
     meetingNotesByMonth,
     myMemosByTeacher,
     lessonReportsByMonth,
-    studentDefaults,
-    attendanceCountsByMonth,
     bulletinBoard,
   } = state
 
@@ -1159,73 +1153,6 @@ export default function App() {
         [monthKey]: { ...(s.sessionSpecialNotesByMonth[monthKey] ?? {}), [sessionKey]: note },
       },
     }))
-  }
-
-  function setStudentDefault(cls, count) {
-    if (!canEditAdmin) return
-    setState((s) => ({ ...s, studentDefaults: { ...s.studentDefaults, [cls]: count } }))
-  }
-
-  function getStudentDefault(cls) {
-    return studentDefaults[cls] ?? 0
-  }
-
-  function getStudentCount(sessionKey, cls) {
-    const override = attendanceCountsByMonth[monthKey]?.[sessionKey]?.students?.[cls]
-    if (override !== undefined) return override
-    return getStudentDefault(cls)
-  }
-
-  function setStudentCount(sessionKey, cls, count) {
-    if (!canEditAdmin) return
-    setState((s) => {
-      const byMonth = { ...(s.attendanceCountsByMonth[monthKey] ?? {}) }
-      const bySession = { ...(byMonth[sessionKey] ?? {}) }
-      const students = { ...(bySession.students ?? {}) }
-      if (count === (s.studentDefaults[cls] ?? 0)) {
-        delete students[cls]
-      } else {
-        students[cls] = count
-      }
-      bySession.students = students
-      if (Object.keys(students).length === 0) {
-        delete bySession.students
-      }
-      byMonth[sessionKey] = bySession
-      return { ...s, attendanceCountsByMonth: { ...s.attendanceCountsByMonth, [monthKey]: byMonth } }
-    })
-  }
-
-  function setVolunteerOverride(sessionKey, count) {
-    if (!canEditAdmin) return
-    setState((s) => {
-      const byMonth = { ...(s.attendanceCountsByMonth[monthKey] ?? {}) }
-      const bySession = { ...(byMonth[sessionKey] ?? {}) }
-      bySession.volunteersOverride = count
-      byMonth[sessionKey] = bySession
-      return { ...s, attendanceCountsByMonth: { ...s.attendanceCountsByMonth, [monthKey]: byMonth } }
-    })
-  }
-
-  function getAttendanceCounts(sessionKey) {
-    const session = schedule.find((s) => s.key === sessionKey)
-    if (!session) return { studentTotal: 0, volunteer: 0, total: 0, byClass: {} }
-
-    const countOverride = attendanceCountsByMonth[monthKey]?.[sessionKey]
-    const volunteerOverride = countOverride?.volunteersOverride
-    const volunteer = volunteerOverride != null ? volunteerOverride
-      : session.selectedTeachers.length + session.selectedMaybeTeachers.length
-
-    const openClasses = getSessionClasses(session)
-    let studentTotal = 0
-    const byClass = {}
-    for (const cls of openClasses) {
-      const n = getStudentCount(sessionKey, cls)
-      byClass[cls] = n
-      studentTotal += n
-    }
-
-    return { studentTotal, volunteer, total: studentTotal + volunteer, byClass }
   }
 
   function setSpecialRule(key, value) {
@@ -2047,32 +1974,6 @@ export default function App() {
               </tbody>
             </table>
           </div>
-          <div className="schedule-totals">
-            <div className="schedule-totals-header">人数集計</div>
-            <div className="schedule-totals-grid">
-              <div className="totals-row">
-                <div className="totals-label">学習者</div>
-                {schedule.map((s) => {
-                  const c = s.closed ? 0 : getAttendanceCounts(s.key).studentTotal
-                  return <div key={s.key} className="totals-cell">{s.closed ? '' : c}</div>
-                })}
-              </div>
-              <div className="totals-row">
-                <div className="totals-label">ボランティア</div>
-                {schedule.map((s) => {
-                  const c = s.closed ? 0 : getAttendanceCounts(s.key).volunteer
-                  return <div key={s.key} className="totals-cell">{s.closed ? '' : c}</div>
-                })}
-              </div>
-              <div className="totals-row totals-row-em">
-                <div className="totals-label">合計</div>
-                {schedule.map((s) => {
-                  const c = s.closed ? 0 : getAttendanceCounts(s.key).total
-                  return <div key={s.key} className="totals-cell">{s.closed ? '' : c}</div>
-                })}
-              </div>
-            </div>
-          </div>
         </section>
         <section className="panel">
           <h2>計算メモ</h2>
@@ -2134,7 +2035,6 @@ export default function App() {
                             ))}
                           </div>
                         </div>
-                        {canEditAdmin && getSessionClasses(session).length > 0 && <div className="session-student-row">{getSessionClasses(session).map((cls) => <div key={cls} className="student-chip"><span>{cls}</span><button type="button" className="mini-counter-btn" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))}>−</button><span className="mini-counter-value">{getStudentCount(session.key, cls)}</span><button type="button" className="mini-counter-btn" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)}>+</button></div>)}{getAttendanceCounts(session.key).studentTotal > 0 ? <span className="student-total">小計 {getAttendanceCounts(session.key).studentTotal}人</span> : null}</div>}
                       </>
                     )}
                   </article>
@@ -2227,20 +2127,23 @@ export default function App() {
             <button type="button" className="primary-btn" onClick={addGlobalClass} disabled={!canEditAdmin}>クラスを追加</button>
           </section>
           <section className="panel">
-            <h2>学習者のデフォルト人数</h2>
-            <p className="panel-desc">各回の学習者数算出の基準値です。クラスごとに設定してください。</p>
-            <div className="student-default-list">
-              {allClasses.map((cls) => (
-                <div key={cls} className="student-default-row">
-                  <span className="student-default-label">{cls}</span>
-                  <div className="mini-counter">
-                    <button type="button" className="mini-counter-btn" onClick={() => setStudentDefault(cls, Math.max(0, getStudentDefault(cls) - 1))} disabled={!canEditAdmin}>−</button>
-                    <span className="mini-counter-value">{getStudentDefault(cls)}</span>
-                    <button type="button" className="mini-counter-btn" onClick={() => setStudentDefault(cls, getStudentDefault(cls) + 1)} disabled={!canEditAdmin}>+</button>
+            <h2>出欠ステータス</h2>
+            <p className="panel-desc">表示名と計算上の動作を管理します。</p>
+            <div className="status-edit-list">
+              {statusOptions.map((option, idx) => {
+                const isBuiltIn = ['yes', 'maybe', 'no', 'meeting_only'].includes(option.id)
+                return (
+                  <div key={option.id} className="status-edit-row">
+                    {isBuiltIn ? <span className="status-label-fixed">{option.label}</span> : <input value={option.label} ref={idx === statusOptions.length - 1 ? newStatusRef : null} onChange={(e) => updateStatusOption(idx, 'label', e.target.value)} disabled={!canEditAdmin} />}
+                    <select value={option.behavior} onChange={(e) => updateStatusOption(idx, 'behavior', e.target.value)} disabled={!canEditAdmin || isBuiltIn}>
+                      {BEHAVIORS.map((behavior) => <option key={behavior.value} value={behavior.value}>{behavior.label}</option>)}
+                    </select>
+                    {!isBuiltIn ? <button type="button" className="icon-btn danger" onClick={() => deleteStatusOption(idx)} disabled={!canEditAdmin}>×</button> : null}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
+            <button type="button" className="primary-btn" onClick={addStatusOption} disabled={!canEditAdmin}>ステータスを追加</button>
           </section>
         </div>
       </section>
