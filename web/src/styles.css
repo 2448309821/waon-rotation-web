@@ -235,6 +235,21 @@ textarea::placeholder {
   background: var(--primary);
   color: #fff;
   font-weight: 800;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  flex: 0 0 auto;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.brand-mark-small {
+  width: 38px;
+  height: 38px;
 }
 
 .sidebar-brand strong,
@@ -303,6 +318,51 @@ textarea::placeholder {
   gap: 6px;
   margin-top: auto;
   padding-bottom: var(--space-3);
+}
+
+.brand-icon-picker {
+  display: grid;
+  gap: 8px;
+  margin-top: var(--space-3);
+}
+
+.brand-icon-picker-compact {
+  margin-top: 0;
+  padding-bottom: var(--space-3);
+}
+
+.brand-icon-picker-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.brand-icon-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.brand-icon-option {
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  background: var(--surface-subtle);
+  cursor: pointer;
+}
+
+.brand-icon-option img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.brand-icon-option.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
 }
 
 .theme-pill {
@@ -1928,6 +1988,14 @@ textarea::placeholder {
 .student-chip span { font-weight: 600; }
 .student-total { margin-left: auto; font-weight: 700; font-size: 0.95rem; color: var(--color-primary); }
 .schedule-totals { margin-top: var(--space-4); padding: var(--space-3); border-radius: var(--radius-md); border: 2px solid var(--table-grid); background: var(--table-cell-bg); }
+.today-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--color-primary); color: #fff; font-size: 0.72rem; font-weight: 700; vertical-align: middle; }
+.past-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--table-grid); color: var(--color-text-soft); font-size: 0.72rem; vertical-align: middle; }
+.session-row-past { opacity: 0.75; }
+.session-row-today { box-shadow: 0 0 0 2px var(--color-primary); }
+.session-counts-bar { margin-top: var(--space-2); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); background: var(--primary-50); font-size: 0.88rem; font-weight: 600; text-align: right; color: var(--color-text); }
+.th-today { background: var(--color-primary) !important; color: #fff !important; }
+.th-past { opacity: 0.6; }
+.td-past { opacity: 0.5; }
 .schedule-totals-header { font-weight: 700; font-size: 0.95rem; margin-bottom: var(--space-2); }
 .schedule-totals-grid { display: flex; flex-direction: column; gap: 2px; }
 .totals-row { display: flex; align-items: center; }
@@ -2228,10 +2296,14 @@ textarea::placeholder {
 }
 
 .mobile-header {
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-title-row {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
+  align-items: center;
+  gap: 10px;
 }
 
 .mobile-header h1 {
@@ -2252,6 +2324,14 @@ textarea::placeholder {
   font-size: 0.74rem !important;
   font-weight: 900;
   letter-spacing: 0;
+}
+
+.mobile-header .brand-icon-picker-compact {
+  padding-bottom: 0;
+}
+
+.mobile-header .brand-icon-options {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .mobile-user-chip,
