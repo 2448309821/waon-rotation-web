@@ -3,6 +3,12 @@ import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import '@fontsource/noto-sans-jp/400.css'
 import '@fontsource/noto-sans-jp/700.css'
+import waonIcon1 from './assets/brand-icons/waon-icon-1.webp'
+import waonIcon2 from './assets/brand-icons/waon-icon-2.webp'
+import waonIcon3 from './assets/brand-icons/waon-icon-3.webp'
+import waonIcon4 from './assets/brand-icons/waon-icon-4.webp'
+import waonIcon5 from './assets/brand-icons/waon-icon-5.webp'
+import waonIcon6 from './assets/brand-icons/waon-icon-6.webp'
 import {
   ALL_CLASSES,
   BEHAVIORS,
@@ -38,6 +44,14 @@ const MIN_TEXT_SCALE = 80
 const MAX_TEXT_SCALE = 200
 const ADMIN_NAME = '裴'
 const MONTH_JP = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+const BRAND_ICONS = [
+  { id: 'pencil', label: 'えんぴつ', src: waonIcon1 },
+  { id: 'sakura-book', label: 'さくら本', src: waonIcon2 },
+  { id: 'class', label: '教室', src: waonIcon3 },
+  { id: 'japan', label: '和風', src: waonIcon4 },
+  { id: 'enso', label: '円相', src: waonIcon5 },
+  { id: 'rainbow-book', label: 'みんな', src: waonIcon6 },
+]
 const SEEDED_MONTH_KEY = '2026-5'
 const SEEDED_SESSION_TYPES = {
   [SEEDED_MONTH_KEY]: {
@@ -91,6 +105,7 @@ function buildFallbackState() {
     studentDefaults: {},
     attendanceCountsByMonth: {},
     bulletinBoard: [],
+    brandIconId: BRAND_ICONS[0].id,
   }
 }
 
@@ -124,6 +139,7 @@ function mergeState(saved) {
     studentDefaults: saved.studentDefaults ?? {},
     attendanceCountsByMonth: saved.attendanceCountsByMonth ?? {},
     bulletinBoard: Array.isArray(saved.bulletinBoard) ? saved.bulletinBoard : [],
+    brandIconId: BRAND_ICONS.some((icon) => icon.id === saved.brandIconId) ? saved.brandIconId : fallback.brandIconId,
   }
 }
 
@@ -603,15 +619,50 @@ function ModeSwitch({ uiMode, onChange, compact = false }) {
   )
 }
 
-function IdentityGate({ teachers, onSelect, uiMode = 'auto', onUiModeChange = () => {} }) {
+function getBrandIcon(iconId) {
+  return BRAND_ICONS.find((icon) => icon.id === iconId) ?? BRAND_ICONS[0]
+}
+
+function BrandMark({ iconId, size = 'normal' }) {
+  const icon = getBrandIcon(iconId)
+  return (
+    <span className={`brand-mark brand-mark-${size}`}>
+      <img src={icon.src} alt="Wawon" />
+    </span>
+  )
+}
+
+function BrandIconPicker({ value, onChange, compact = false }) {
+  return (
+    <div className={compact ? 'brand-icon-picker brand-icon-picker-compact' : 'brand-icon-picker'}>
+      <span className="brand-icon-picker-label">サイトアイコン</span>
+      <div className="brand-icon-options">
+        {BRAND_ICONS.map((icon) => (
+          <button
+            key={icon.id}
+            type="button"
+            className={value === icon.id ? 'brand-icon-option active' : 'brand-icon-option'}
+            onClick={() => onChange?.(icon.id)}
+            title={icon.label}
+            aria-label={icon.label}
+          >
+            <img src={icon.src} alt="" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function IdentityGate({ teachers, onSelect, uiMode = 'auto', onUiModeChange = () => {}, brandIconId = BRAND_ICONS[0].id, onBrandIconChange = () => {} }) {
   const previewSections = ['ホーム', '出席入力', '担当表', '伝言板・メモ']
   return (
     <div className="page">
       <aside className="app-sidebar" aria-label="メインナビゲーション">
         <div className="sidebar-brand">
-          <span className="brand-mark">W</span>
+          <BrandMark iconId={brandIconId} />
           <div>
-            <strong>Waon</strong>
+            <strong>Wawon</strong>
             <span>Rotation</span>
           </div>
         </div>
@@ -627,15 +678,17 @@ function IdentityGate({ teachers, onSelect, uiMode = 'auto', onUiModeChange = ()
           <span>ダッシュボード</span>
           <strong>ログイン待ち</strong>
         </div>
+        <BrandIconPicker value={brandIconId} onChange={onBrandIconChange} compact />
         <ModeSwitch uiMode={uiMode} onChange={onUiModeChange} />
       </aside>
 
       <main className="app-main">
       <section className="hero identity-hero">
         <div>
-          <p className="eyebrow">Waon Rotation</p>
+          <p className="eyebrow">Wawon Rotation</p>
           <h1>新しい担当表ワークスペースへ</h1>
           <p className="lead">左の目次で6つの画面に分け、出席、担当表、各回設定、先生ごとの担当可能クラスを見やすく整理します。</p>
+          <BrandIconPicker value={brandIconId} onChange={onBrandIconChange} />
           <ModeSwitch uiMode={uiMode} onChange={onUiModeChange} compact />
         </div>
       </section>
@@ -722,9 +775,14 @@ export default function App() {
     studentDefaults,
     attendanceCountsByMonth,
     bulletinBoard,
+    brandIconId,
   } = state
 
   const monthKey = `${year}-${month}`
+  const today = new Date()
+  const todayKey = `${today.getMonth() + 1}/${today.getDate()}`
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const isThisMonth = year === today.getFullYear() && month === today.getMonth() + 1
   const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, sessionSpecialNotesByMonth, defaultClasses, allClasses, specialRules)
   const attendance = attendanceByMonth[monthKey] ?? {}
   const memos = memosByMonth[monthKey] ?? {}
@@ -734,6 +792,7 @@ export default function App() {
   const effectiveTeacher = isAdmin ? currentTeacher : identity
   const isMonthLocked = !!(lockedMonths?.[monthKey])
   const canEditAdmin = isAdmin && !isMonthLocked
+  const activeBrandIconId = BRAND_ICONS.some((icon) => icon.id === brandIconId) ? brandIconId : BRAND_ICONS[0].id
 
   let schedule = []
   try {
@@ -812,6 +871,11 @@ export default function App() {
   function resetTextScale() {
     setTextScale(100)
     setTextScaleDraft('100')
+  }
+
+  function setBrandIcon(iconId) {
+    if (!BRAND_ICONS.some((icon) => icon.id === iconId)) return
+    setState((s) => ({ ...s, brandIconId: iconId }))
   }
 
   useEffect(() => {
@@ -1662,7 +1726,7 @@ export default function App() {
 
   // ── Gate ──────────────────────────────────────────────────────────────────────
   if (!identity || !teachers.some((t) => t.name === identity)) {
-    return <IdentityGate teachers={teachers} onSelect={selectIdentity} uiMode={uiMode} onUiModeChange={setUiMode} />
+    return <IdentityGate teachers={teachers} onSelect={selectIdentity} uiMode={uiMode} onUiModeChange={setUiMode} brandIconId={activeBrandIconId} onBrandIconChange={setBrandIcon} />
   }
 
   const archiveEntries = Object.entries(archivedSchedules ?? {}).sort(([a], [b]) => b.localeCompare(a))
@@ -1726,7 +1790,7 @@ export default function App() {
     return (
       <header className="screen-header">
         <div>
-          <p className="eyebrow">Waon Rotation</p>
+          <p className="eyebrow">Wawon Rotation</p>
           <h1>{title}</h1>
           <p>{subtitle}</p>
         </div>
@@ -1979,11 +2043,18 @@ export default function App() {
   }
 
   function ScheduleView() {
+    const t = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    function isPast(skey) {
+      if (!isThisMonth || !skey) return false
+      const sdate = new Date(year, month - 1, parseInt(skey.split('/')[1], 10))
+      return sdate < t
+    }
+    function isToday(skey) { return isThisMonth && skey === todayKey }
     return (
       <section id="schedule" className="screen-view">
         <AppHeader
           title={`${year}年${MONTH_JP[month - 1]} 担当表`}
-          subtitle="出席と担当可能クラスから自動で決まった結果です。"
+          subtitle={isThisMonth ? `今日は${todayKey}` : '出席と担当可能クラスから自動で決まった結果です。'}
           actions={<ExportActions />}
         />
         <section className="panel">
@@ -1998,7 +2069,12 @@ export default function App() {
               <thead>
                 <tr>
                   <th className="col-sticky col-head">名前</th>
-                  {sessions.map((session) => <th key={session.key}>{session.label}{session.meeting ? ' 例会' : ''}</th>)}
+                  {sessions.map((session) => {
+                    const td = isToday(session.key)
+                    const past = isPast(session.key)
+                    const cls = td ? 'th-today' : past ? 'th-past' : ''
+                    return <th key={session.key} className={cls}>{session.label}{session.meeting ? ' 例会' : ''}{td ? ' ★' : past ? ' ✓' : ''}</th>
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -2088,6 +2164,15 @@ export default function App() {
   }
 
   function SessionsView() {
+    const t = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    function isPast(skey) {
+      if (!isThisMonth || !skey) return false
+      const sdate = new Date(year, month - 1, parseInt(skey.split('/')[1], 10))
+      return sdate < t
+    }
+    function isToday(skey) {
+      return isThisMonth && skey === todayKey
+    }
     return (
       <section id="sessions" className="screen-view">
         <AppHeader title="各回設定" subtitle="開催日ごとに種類、開講クラス、手動担当、特別連絡を設定します。" />
@@ -2100,17 +2185,25 @@ export default function App() {
                 const classes = getSessionClasses(session)
                 const isOverridden = !!sessionClassesByMonth[monthKey]?.[session.key]
                 const isWangWeek = session.weekIndex % 2 === 1
+                const past = isPast(session.key)
+                const td = isToday(session.key)
+                const counts = getAttendanceCounts(session.key)
                 return (
-                  <article key={session.key} className={`session-row session-row-${type}`}>
+                  <article key={session.key} className={`session-row session-row-${type}${past ? ' session-row-past' : ''}${td ? ' session-row-today' : ''}`}>
                     <div className="session-row-top">
                       <div className="session-date-info">
-                        <strong className="session-date">{session.label}</strong>
+                        <strong className="session-date">{session.label}{td ? <span className="today-badge">今日</span> : ''}{past ? <span className="past-badge">済</span> : ''}</strong>
                         <span className="session-week">{session.closed ? 'やすみ' : `${i + 1}週目${isWangWeek ? '（王週）' : ''}`}</span>
                       </div>
                       <select className="session-type-select" value={type} onChange={(e) => setSessionType(session.key, e.target.value)} disabled={!canEditAdmin}>
                         {sessionTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </select>
                     </div>
+                    {!session.closed && counts.total > 0 && (
+                      <div className="session-counts-bar">
+                        <span>学習者 {counts.studentTotal} ＋ ボランティア {counts.volunteer} ＝ <strong>{counts.total}人</strong></span>
+                      </div>
+                    )}
                     {!session.closed && (
                       <>
                         <div className="session-special-note-row">
@@ -2547,16 +2640,20 @@ export default function App() {
   function MobileHeader({ title, subtitle }) {
     return (
       <header className="mobile-header">
-        <div>
-          <p className="mobile-kicker">Waon Rotation</p>
+        <div className="mobile-title-row">
+          <BrandMark iconId={activeBrandIconId} size="small" />
+          <div>
+          <p className="mobile-kicker">Wawon Rotation</p>
           <h1>{title}</h1>
           {subtitle ? <p>{subtitle}</p> : null}
+          </div>
         </div>
         <button type="button" className="mobile-user-chip" onClick={switchIdentity}>
           <strong>{identity}</strong>
           <span>{isAdmin ? '管理者' : '本人'}</span>
         </button>
         <UiModeSwitch compact />
+        <BrandIconPicker value={activeBrandIconId} onChange={setBrandIcon} compact />
         <MobileMonthControls />
       </header>
     )
@@ -2968,9 +3065,9 @@ export default function App() {
     <div className={`page ui-${effectiveUiMode}`} style={{ '--font-scale': textScale / 100 }}>
       <aside className="app-sidebar desktop-only" aria-label="メインナビゲーション">
         <div className="sidebar-brand">
-          <span className="brand-mark">W</span>
+          <BrandMark iconId={activeBrandIconId} />
           <div>
-            <strong>Waon</strong>
+            <strong>Wawon</strong>
             <span>Rotation</span>
           </div>
         </div>
@@ -2997,6 +3094,7 @@ export default function App() {
           ))}
         </div>
         <UiModeSwitch />
+        <BrandIconPicker value={activeBrandIconId} onChange={setBrandIcon} compact />
         <div className="sidebar-footer">
           <span>{year}年 {MONTH_JP[month - 1]}</span>
           <strong>{identity}</strong>
