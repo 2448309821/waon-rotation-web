@@ -633,9 +633,16 @@ function BrandMark({ iconId, size = 'normal' }) {
 }
 
 function BrandIconPicker({ value, onChange, compact = false }) {
+  const activeIcon = getBrandIcon(value)
   return (
-    <div className={compact ? 'brand-icon-picker brand-icon-picker-compact' : 'brand-icon-picker'}>
-      <span className="brand-icon-picker-label">サイトアイコン</span>
+    <details className={compact ? 'brand-icon-picker brand-icon-picker-compact' : 'brand-icon-picker'}>
+      <summary className="brand-icon-picker-summary">
+        <span className="brand-icon-summary-left">
+          <span className="brand-icon-picker-label">サイトアイコン</span>
+          <strong>{activeIcon.label}</strong>
+        </span>
+        <img src={activeIcon.src} alt="" />
+      </summary>
       <div className="brand-icon-options">
         {BRAND_ICONS.map((icon) => (
           <button
@@ -650,7 +657,7 @@ function BrandIconPicker({ value, onChange, compact = false }) {
           </button>
         ))}
       </div>
-    </div>
+    </details>
   )
 }
 
@@ -1701,6 +1708,7 @@ export default function App() {
   const mobileNavSections = [
     { id: 'home', label: 'ホーム', shortLabel: 'ホーム', adminOnly: false },
     { id: 'attendance', label: '出席', shortLabel: '出席', adminOnly: false },
+    { id: 'attendanceStats', label: '出席統計', shortLabel: '統計', adminOnly: false },
     { id: 'schedule', label: '担当表', shortLabel: '担当', adminOnly: false },
     { id: 'mobileAdmin', label: '管理', shortLabel: '管理', adminOnly: true },
     { id: 'mobileMemo', label: 'メモ・連絡板', shortLabel: 'メモ', adminOnly: false },
@@ -2758,6 +2766,62 @@ export default function App() {
     )
   }
 
+  function MobileAttendanceStatsView() {
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title="出席統計" subtitle="各回の学習者・ボランティア人数を確認できます" />
+        <div className="mobile-card-list">
+          {schedule.map((session) => {
+            const counts = getAttendanceCounts(session.key)
+            const classes = getSessionClasses(session)
+            return (
+              <article key={session.key} className={`mobile-stats-card ${session.closed ? 'is-disabled' : ''}`}>
+                <div className="mobile-card-head">
+                  <div>
+                    <strong>{session.label}</strong>
+                    <span>{sessionTypeLabel(session)}</span>
+                  </div>
+                  <span className="mobile-status-pill yes">計{counts.total}名</span>
+                </div>
+                {session.closed ? (
+                  <p className="mobile-card-note">わおん休み</p>
+                ) : (
+                  <>
+                    <div className="mobile-stats-total">
+                      <div><span>学習者</span><strong>{counts.studentTotal}</strong></div>
+                      <div><span>ボランティア</span><strong>{counts.volunteer}</strong></div>
+                      <div><span>合計</span><strong>{counts.total}</strong></div>
+                    </div>
+                    <div className="mobile-stats-editor">
+                      {classes.map((cls) => (
+                        <div key={`${session.key}-${cls}`} className="mobile-counter-row">
+                          <span>{cls}</span>
+                          <div>
+                            <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!canEditAdmin}>−</button>
+                            <strong>{getStudentCount(session.key, cls)}</strong>
+                            <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!canEditAdmin}>+</button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="mobile-counter-row">
+                        <span>ボランティア</span>
+                        <div>
+                          <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!canEditAdmin}>−</button>
+                          <strong>{counts.volunteer}</strong>
+                          <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!canEditAdmin}>+</button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </article>
+            )
+          })}
+        </div>
+      </section>
+    )
+  }
+
   function MobileScheduleView() {
     return (
       <section className="mobile-screen">
@@ -3055,6 +3119,7 @@ export default function App() {
   const mobileViews = {
     home: MobileHomeView(),
     attendance: MobileAttendanceView(),
+    attendanceStats: MobileAttendanceStatsView(),
     schedule: MobileScheduleView(),
     mobileAdmin: MobileAdminView(),
     mobileMemo: MobileMemoView(),
