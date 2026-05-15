@@ -1248,7 +1248,7 @@ export default function App() {
   }
 
   function setStudentCount(sessionKey, cls, count) {
-    if (!canEditAdmin) return
+    if (!isAdmin) return
     setState((s) => {
       const byMonth = { ...(s.attendanceCountsByMonth[monthKey] ?? {}) }
       const bySession = { ...(byMonth[sessionKey] ?? {}) }
@@ -1268,7 +1268,7 @@ export default function App() {
   }
 
   function setVolunteerOverride(sessionKey, count) {
-    if (!canEditAdmin) return
+    if (!isAdmin) return
     setState((s) => {
       const byMonth = { ...(s.attendanceCountsByMonth[monthKey] ?? {}) }
       const bySession = { ...(byMonth[sessionKey] ?? {}) }
@@ -1699,6 +1699,7 @@ export default function App() {
   const navSections = [
     { id: 'home', label: 'ホーム', adminOnly: false },
     { id: 'attendance', label: '出席入力', adminOnly: false },
+    { id: 'attendanceStats', label: '出席統計', adminOnly: false },
     { id: 'schedule', label: '担当表', adminOnly: false },
     { id: 'sessions', label: '各回設定', adminOnly: true },
     { id: 'settings', label: '先生・クラス設定', adminOnly: true },
@@ -2046,6 +2047,48 @@ export default function App() {
             </table>
           </div>
         </section>
+      </section>
+    )
+  }
+
+  function AttendanceStatsView() {
+    return (
+      <section id="attendanceStats" className="screen-view">
+        <AppHeader title="出席統計" subtitle="各回の学習者・ボランティア人数を確認・入力します。" />
+        <div className="dashboard-grid">
+          {schedule.filter((s) => !s.closed).map((session) => {
+            const counts = getAttendanceCounts(session.key)
+            const classes = getSessionClasses(session)
+            return (
+              <section key={session.key} className="panel">
+                <div className="panel-header">
+                  <div><h2>{session.label}</h2><p>{sessionTypeLabel(session)}</p></div>
+                  <span>計{counts.total}名</span>
+                </div>
+                <div className="mobile-stats-editor">
+                  {classes.map((cls) => (
+                    <div key={cls} className="mobile-counter-row">
+                      <span>{cls}</span>
+                      <div>
+                        <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!isAdmin}>−</button>
+                        <strong>{getStudentCount(session.key, cls)}</strong>
+                        <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!isAdmin}>+</button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="mobile-counter-row">
+                    <span>ボランティア</span>
+                    <div>
+                      <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!isAdmin}>−</button>
+                      <strong>{counts.volunteer}</strong>
+                      <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!isAdmin}>+</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )
+          })}
+        </div>
       </section>
     )
   }
@@ -2797,18 +2840,18 @@ export default function App() {
                         <div key={`${session.key}-${cls}`} className="mobile-counter-row">
                           <span>{cls}</span>
                           <div>
-                            <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!canEditAdmin}>−</button>
+                            <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!isAdmin}>−</button>
                             <strong>{getStudentCount(session.key, cls)}</strong>
-                            <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!canEditAdmin}>+</button>
+                            <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!isAdmin}>+</button>
                           </div>
                         </div>
                       ))}
                       <div className="mobile-counter-row">
                         <span>ボランティア</span>
                         <div>
-                          <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!canEditAdmin}>−</button>
+                          <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!isAdmin}>−</button>
                           <strong>{counts.volunteer}</strong>
-                          <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!canEditAdmin}>+</button>
+                          <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!isAdmin}>+</button>
                         </div>
                       </div>
                     </div>
@@ -3110,6 +3153,7 @@ export default function App() {
   const views = {
     home: HomeView(),
     attendance: AttendanceView(),
+    attendanceStats: AttendanceStatsView(),
     schedule: ScheduleView(),
     sessions: SessionsView(),
     settings: SettingsView(),
