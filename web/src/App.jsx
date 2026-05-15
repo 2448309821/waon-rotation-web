@@ -1248,7 +1248,7 @@ export default function App() {
   }
 
   function setStudentCount(sessionKey, cls, count) {
-    if (!isAdmin) return
+    if (!identity) return
     setState((s) => {
       const byMonth = { ...(s.attendanceCountsByMonth[monthKey] ?? {}) }
       const bySession = { ...(byMonth[sessionKey] ?? {}) }
@@ -1268,7 +1268,7 @@ export default function App() {
   }
 
   function setVolunteerOverride(sessionKey, count) {
-    if (!isAdmin) return
+    if (!identity) return
     setState((s) => {
       const byMonth = { ...(s.attendanceCountsByMonth[monthKey] ?? {}) }
       const bySession = { ...(byMonth[sessionKey] ?? {}) }
@@ -2070,18 +2070,18 @@ export default function App() {
                     <div key={cls} className="mobile-counter-row">
                       <span>{cls}</span>
                       <div>
-                        <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!isAdmin}>−</button>
+                        <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!identity}>−</button>
                         <strong>{getStudentCount(session.key, cls)}</strong>
-                        <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!isAdmin}>+</button>
+                        <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!identity}>+</button>
                       </div>
                     </div>
                   ))}
                   <div className="mobile-counter-row">
                     <span>ボランティア</span>
                     <div>
-                      <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!isAdmin}>−</button>
+                      <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!identity}>−</button>
                       <strong>{counts.volunteer}</strong>
-                      <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!isAdmin}>+</button>
+                      <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!identity}>+</button>
                     </div>
                   </div>
                 </div>
@@ -2840,18 +2840,18 @@ export default function App() {
                         <div key={`${session.key}-${cls}`} className="mobile-counter-row">
                           <span>{cls}</span>
                           <div>
-                            <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!isAdmin}>−</button>
+                            <button type="button" onClick={() => setStudentCount(session.key, cls, Math.max(0, getStudentCount(session.key, cls) - 1))} disabled={!identity}>−</button>
                             <strong>{getStudentCount(session.key, cls)}</strong>
-                            <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!isAdmin}>+</button>
+                            <button type="button" onClick={() => setStudentCount(session.key, cls, getStudentCount(session.key, cls) + 1)} disabled={!identity}>+</button>
                           </div>
                         </div>
                       ))}
                       <div className="mobile-counter-row">
                         <span>ボランティア</span>
                         <div>
-                          <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!isAdmin}>−</button>
+                          <button type="button" onClick={() => setVolunteerOverride(session.key, Math.max(0, counts.volunteer - 1))} disabled={!identity}>−</button>
                           <strong>{counts.volunteer}</strong>
-                          <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!isAdmin}>+</button>
+                          <button type="button" onClick={() => setVolunteerOverride(session.key, counts.volunteer + 1)} disabled={!identity}>+</button>
                         </div>
                       </div>
                     </div>
