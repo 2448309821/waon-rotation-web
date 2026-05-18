@@ -1661,6 +1661,15 @@ export default function App() {
     setState((s) => ({ ...s, teachers: s.teachers.map((t, i) => (i === idx ? { ...t, [field]: value } : t)) }))
   }
 
+  function setTeacherMonthlyLimit(teacherName, value) {
+    if (!canEditAdmin && teacherName !== identity) return
+    const nextValue = value === '' ? '' : Math.max(0, Math.min(31, Number(value) || 0))
+    setState((s) => ({
+      ...s,
+      teachers: s.teachers.map((t) => (t.name === teacherName ? { ...t, maxMonthlyAssignments: nextValue } : t)),
+    }))
+  }
+
   function toggleTeacherClass(idx, cls, enabled) {
     if (!canEditAdmin) return
     setState((s) => ({
@@ -1675,7 +1684,7 @@ export default function App() {
 
   function addTeacher() {
     if (!canEditAdmin) return
-    setState((s) => ({ ...s, teachers: [...s.teachers, { name: '新しい先生', remote: false, skipMeeting: false, defaultStatus: 'no', classes: [] }] }))
+    setState((s) => ({ ...s, teachers: [...s.teachers, { name: '新しい先生', remote: false, skipMeeting: false, defaultStatus: 'no', maxMonthlyAssignments: '', classes: [] }] }))
     setTimeout(() => newTeacherRef.current?.focus(), 50)
   }
 
@@ -1793,6 +1802,36 @@ export default function App() {
 
   function UiModeSwitch({ compact = false }) {
     return <ModeSwitch uiMode={uiMode} onChange={setUiMode} compact={compact} />
+  }
+
+  function MonthlyLimitControl({ teacherName, compact = false }) {
+    const teacher = teachers.find((t) => t.name === teacherName)
+    if (!teacher) return null
+    const limit = teacher.maxMonthlyAssignments ?? ''
+    const assignedCount = schedule.filter((session) => assignedClassesFor(session, teacherName).length > 0).length
+    const canEditLimit = canEditAdmin || teacherName === identity
+    return (
+      <div className={compact ? 'monthly-limit-card monthly-limit-card-compact' : 'monthly-limit-card'}>
+        <div>
+          <span>今月の担当希望</span>
+          <strong>{limit === '' ? '上限なし' : `${limit}回まで`}</strong>
+          <small>現在 {assignedCount}回 / {editableSessions.length}回</small>
+        </div>
+        <label>
+          <span>月上限</span>
+          <input
+            type="number"
+            min="0"
+            max="31"
+            inputMode="numeric"
+            placeholder="なし"
+            value={limit}
+            onChange={(e) => setTeacherMonthlyLimit(teacherName, e.target.value)}
+            disabled={!canEditLimit}
+          />
+        </label>
+      </div>
+    )
   }
 
   function AppHeader({ title, subtitle, actions }) {
@@ -1977,6 +2016,7 @@ export default function App() {
                 <p>{isMonthLocked ? 'この月の担当表は確定済みです。' : '日付ごとに状態を選んでください。'}</p>
               </div>
             </div>
+            <MonthlyLimitControl teacherName={effectiveTeacher} />
             <div className="attendance-card-grid">
               {sessions.map((session) => {
                 const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
@@ -2323,6 +2363,7 @@ export default function App() {
                   <th>遠方</th>
                   <th>例会配慮</th>
                   <th>既定出欠</th>
+                  <th>月上限</th>
                   {allClasses.map((cls) => <th key={cls}>{cls}</th>)}
                   <th>操作</th>
                 </tr>
@@ -2337,6 +2378,18 @@ export default function App() {
                       <select value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)} disabled={!canEditAdmin}>
                         {statusOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                       </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        max="31"
+                        inputMode="numeric"
+                        placeholder="なし"
+                        value={teacher.maxMonthlyAssignments ?? ''}
+                        onChange={(e) => setTeacherMonthlyLimit(teacher.name, e.target.value)}
+                        disabled={!canEditAdmin}
+                      />
                     </td>
                     {allClasses.map((cls) => (
                       <td key={cls}><input type="checkbox" checked={teacher.classes.includes(cls)} onChange={(e) => toggleTeacherClass(idx, cls, e.target.checked)} disabled={!canEditAdmin} /></td>
@@ -2773,6 +2826,7 @@ export default function App() {
             ))}
           </div>
         ) : null}
+        <MonthlyLimitControl teacherName={effectiveTeacher} compact />
         <div className="mobile-card-list">
           {sessions.map((session) => {
             const status = getStatusInfo(effectiveTeacher, session.key)
@@ -2976,6 +3030,19 @@ export default function App() {
                 <select value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)} disabled={!canEditAdmin}>
                   {statusOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
+                <label className="mobile-field-label">
+                  <span>月上限</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="31"
+                    inputMode="numeric"
+                    placeholder="なし"
+                    value={teacher.maxMonthlyAssignments ?? ''}
+                    onChange={(e) => setTeacherMonthlyLimit(teacher.name, e.target.value)}
+                    disabled={!canEditAdmin}
+                  />
+                </label>
                 <div className="mobile-class-chip-wrap">
                   {allClasses.map((cls) => (
                     <ClassChip key={cls} label={cls} checked={teacher.classes.includes(cls)} onChange={(e) => toggleTeacherClass(idx, cls, e.target.checked)} disabled={!canEditAdmin} />

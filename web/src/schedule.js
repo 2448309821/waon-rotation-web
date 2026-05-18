@@ -122,8 +122,24 @@ function comparePriority(a, b, allTeachers, meeting) {
   return 0
 }
 
-function scoreAssignment(chosen, allTeachers, meeting) {
+function monthlyLimitOf(teacher) {
+  if (teacher.maxMonthlyAssignments === '' || teacher.maxMonthlyAssignments == null) return null
+  const limit = Number(teacher.maxMonthlyAssignments)
+  return Number.isFinite(limit) && limit >= 0 ? limit : null
+}
+
+function countLimitOverage(chosen, assignmentCounts) {
+  return chosen.reduce((sum, teacher) => {
+    const limit = monthlyLimitOf(teacher)
+    if (limit === null) return sum
+    return sum + Math.max(0, (assignmentCounts[teacher.name] ?? 0) + 1 - limit)
+  }, 0)
+}
+
+function scoreAssignment(chosen, allTeachers, meeting, assignmentCounts = {}) {
   return [
+    -countLimitOverage(chosen, assignmentCounts),
+    -chosen.reduce((s, t) => s + (assignmentCounts[t.name] ?? 0), 0),
     chosen.filter(t => t.remote && meeting).length,
     -chosen.filter(t => t.skipMeeting && meeting).length,
     -chosen.reduce((s, t) => s + allTeachers.indexOf(t), 0),
@@ -159,7 +175,7 @@ function seededRandom(seed) {
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646 }
 }
 
-function tryAssign(available, classes, classRules, allTeachers, meeting, random, seed) {
+function tryAssign(available, classes, classRules, allTeachers, meeting, random, seed, assignmentCounts = {}) {
   if (available.length < classes.length) return null
   if (!random) {
     const sorted = [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
@@ -168,7 +184,7 @@ function tryAssign(available, classes, classRules, allTeachers, meeting, random,
       for (const ordered of permute(chosen)) {
         const assignment = Object.fromEntries(classes.map((cls, i) => [cls, ordered[i].name]))
         if (!classes.every(cls => classRules[cls]?.has(assignment[cls]))) continue
-        const score = scoreAssignment(chosen, allTeachers, meeting)
+        const score = scoreAssignment(chosen, allTeachers, meeting, assignmentCounts)
         if (!bestScore || compareScore(bestScore, score) < 0) { best = assignment; bestScore = score }
       }
     }
@@ -177,12 +193,18 @@ function tryAssign(available, classes, classRules, allTeachers, meeting, random,
 
   const rng = seededRandom(seed)
   const validAssignments = []
+  let bestScore = null
   const sorted = [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
   for (const chosen of combinations(sorted, classes.length)) {
     for (const ordered of permute(chosen)) {
       const assignment = Object.fromEntries(classes.map((cls, i) => [cls, ordered[i].name]))
       if (!classes.every(cls => classRules[cls]?.has(assignment[cls]))) continue
-      validAssignments.push(assignment)
+      const score = scoreAssignment(chosen, allTeachers, meeting, assignmentCounts)
+      if (!bestScore || compareScore(bestScore, score) < 0) {
+        bestScore = score
+        validAssignments.length = 0
+      }
+      if (compareScore(score, bestScore) === 0) validAssignments.push(assignment)
     }
   }
   if (validAssignments.length === 0) return null
@@ -198,6 +220,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
   const behaviorOf = Object.fromEntries(statusOptions.map(o => [o.id, o.behavior]))
   const random = specialRules.random === true
   const seed = specialRules.randomSeed ?? `${Date.now().toString(36)}`
+  const assignmentCounts = {}
 
   return sessions.map(session => {
     if (session.closed) {
@@ -228,7 +251,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     const maybeMeetingTeachers   = teachers.filter(t => behaviorOf[getStatus(t)] === 'maybe_meeting')
 
     let selectedMaybeTeachers = []
-    let autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, seed) : {}
+    let autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, seed, assignmentCounts) : {}
 
     if (!autoAssignments) {
       const sortedMaybe = [...maybeTeachers].sort((a, b) => comparePriority(a, b, teachers, session.meeting))
@@ -236,7 +259,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
         selectedMaybeTeachers = [...selectedMaybeTeachers, t]
         autoAssignments = remainingClasses.length > 0 ? tryAssign(
           [...yesTeachers, ...selectedMaybeTeachers],
-          remainingClasses, classRules, teachers, session.meeting, random, seed,
+          remainingClasses, classRules, teachers, session.meeting, random, seed, assignmentCounts,
         ) : {}
         if (autoAssignments) break
       }
@@ -253,10 +276,10 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       const pool = [...yesTeachers, ...selectedMaybeTeachers]
       usedClasses = []
       for (const cls of remainingClasses) {
-        if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, seed))
+        if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, seed, assignmentCounts))
           usedClasses.push(cls)
       }
-      autoAssignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, seed) ?? {}
+      autoAssignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, seed, assignmentCounts) ?? {}
       assignments = { ...assignments, ...autoAssignments }
       unassignedClasses = remainingClasses.filter(c => !usedClasses.includes(c))
       if (unassignedClasses.length > 0)
@@ -267,6 +290,11 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     const selectedTeachers = [...new Set(Object.values(assignments))].sort(
       (a, b) => teacherNames.indexOf(a) - teacherNames.indexOf(b)
     )
+    const overLimitTeachers = selectedTeachers.filter(name => {
+      const teacher = teachers.find(t => t.name === name)
+      const limit = teacher ? monthlyLimitOf(teacher) : null
+      return limit !== null && (assignmentCounts[name] ?? 0) + 1 > limit
+    })
 
     let special = ''
     if (session.specialNote && session.specialNote.trim()) {
@@ -278,8 +306,14 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       special = `${special}。${selectedMaybeTeachers.map(t => t.name).join('、')}は人数不足のため追加`
     if (Object.keys(manualAssignments).length > 0)
       notes.push('手動設定あり')
+    if (overLimitTeachers.length > 0)
+      notes.push(`月上限超過: ${overLimitTeachers.join('、')}`)
     if (!session.meeting && session.classesOverridden && requiredClasses.some(c => c.includes('王')))
       notes.push('入門分割週（手動設定）')
+
+    selectedTeachers.forEach(name => {
+      assignmentCounts[name] = (assignmentCounts[name] ?? 0) + 1
+    })
 
     return {
       ...session,

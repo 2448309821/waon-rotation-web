@@ -1861,6 +1861,51 @@ textarea::placeholder {
   margin-top: var(--space-3);
 }
 
+.monthly-limit-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.monthly-limit-card div,
+.monthly-limit-card label {
+  display: grid;
+  gap: 4px;
+}
+
+.monthly-limit-card span,
+.monthly-limit-card small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.monthly-limit-card strong {
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.monthly-limit-card input {
+  width: 96px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 900;
+}
+
+.monthly-limit-card-compact {
+  margin: 0;
+}
+
 .attendance-card {
   display: grid;
   gap: var(--space-3);
@@ -2068,6 +2113,10 @@ textarea::placeholder {
   width: 18px;
   min-height: 18px;
   accent-color: var(--primary);
+}
+
+.capability-table input[type="number"] {
+  width: 84px;
 }
 
 .capability-table td:not(:first-child) {
@@ -2830,6 +2879,17 @@ textarea::placeholder {
 .mobile-admin-card input,
 .mobile-admin-card select {
   min-height: 40px;
+}
+
+.mobile-field-label {
+  display: grid;
+  gap: 5px;
+}
+
+.mobile-field-label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
 }
 
 .mobile-class-chip-wrap {
