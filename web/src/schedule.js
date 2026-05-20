@@ -128,6 +128,11 @@ function monthlyLimitOf(teacher) {
   return Number.isFinite(limit) && limit >= 0 ? limit : null
 }
 
+function isUnderMonthlyLimit(teacher, assignmentCounts) {
+  const limit = monthlyLimitOf(teacher)
+  return limit === null || (assignmentCounts[teacher.name] ?? 0) < limit
+}
+
 function countLimitOverage(chosen, assignmentCounts) {
   return chosen.reduce((sum, teacher) => {
     const limit = monthlyLimitOf(teacher)
@@ -212,6 +217,19 @@ function tryAssign(available, classes, classRules, allTeachers, meeting, random,
   return validAssignments[pick]
 }
 
+function tryAssignWithinMonthlyLimit(available, classes, classRules, allTeachers, meeting, random, seed, assignmentCounts = {}) {
+  return tryAssign(
+    available.filter(t => isUnderMonthlyLimit(t, assignmentCounts)),
+    classes,
+    classRules,
+    allTeachers,
+    meeting,
+    random,
+    seed,
+    assignmentCounts,
+  )
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOptions, specialRules = {}) {
@@ -252,7 +270,24 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
 
     const sessionSeed = `${seed}:${session.key}:${remainingClasses.join('|')}`
     let selectedMaybeTeachers = []
-    let autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes`, assignmentCounts) : {}
+    let autoAssignments = remainingClasses.length > 0 ? tryAssignWithinMonthlyLimit(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes:within-limit`, assignmentCounts) : {}
+
+    if (!autoAssignments) {
+      const sortedMaybe = [...maybeTeachers].sort((a, b) => comparePriority(a, b, teachers, session.meeting))
+      for (const t of sortedMaybe) {
+        selectedMaybeTeachers = [...selectedMaybeTeachers, t]
+        autoAssignments = remainingClasses.length > 0 ? tryAssignWithinMonthlyLimit(
+          [...yesTeachers, ...selectedMaybeTeachers],
+          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts,
+        ) : {}
+        if (autoAssignments) break
+      }
+    }
+
+    if (!autoAssignments) {
+      selectedMaybeTeachers = []
+      autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes:limit-fallback`, assignmentCounts) : {}
+    }
 
     if (!autoAssignments) {
       const sortedMaybe = [...maybeTeachers].sort((a, b) => comparePriority(a, b, teachers, session.meeting))
@@ -260,7 +295,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
         selectedMaybeTeachers = [...selectedMaybeTeachers, t]
         autoAssignments = remainingClasses.length > 0 ? tryAssign(
           [...yesTeachers, ...selectedMaybeTeachers],
-          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts,
+          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe-limit-fallback:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts,
         ) : {}
         if (autoAssignments) break
       }
@@ -277,10 +312,13 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       const pool = [...yesTeachers, ...selectedMaybeTeachers]
       usedClasses = []
       for (const cls of remainingClasses) {
-        if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}`, assignmentCounts))
+        if (tryAssignWithinMonthlyLimit(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}:within-limit`, assignmentCounts)
+          || tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}`, assignmentCounts))
           usedClasses.push(cls)
       }
-      autoAssignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback`, assignmentCounts) ?? {}
+      autoAssignments = tryAssignWithinMonthlyLimit(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback:within-limit`, assignmentCounts)
+        ?? tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback`, assignmentCounts)
+        ?? {}
       assignments = { ...assignments, ...autoAssignments }
       unassignedClasses = remainingClasses.filter(c => !usedClasses.includes(c))
       if (unassignedClasses.length > 0)
