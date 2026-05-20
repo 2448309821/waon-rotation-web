@@ -2105,6 +2105,13 @@ textarea::placeholder {
   margin-bottom: 0;
 }
 
+.special-rule-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 .capability-table {
   min-width: 1120px;
 }

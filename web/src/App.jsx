@@ -1301,7 +1301,26 @@ export default function App() {
 
   function setSpecialRule(key, value) {
     if (!canEditAdmin) return
-    setState((s) => ({ ...s, specialRules: { ...s.specialRules, [key]: value } }))
+    setState((s) => ({
+      ...s,
+      specialRules: {
+        ...s.specialRules,
+        [key]: value,
+        ...(key === 'random' && value === true ? { randomSeed: Math.random().toString(36).slice(2) } : {}),
+      },
+    }))
+  }
+
+  function rerollRandomAssignments() {
+    if (!canEditAdmin) return
+    setState((s) => ({
+      ...s,
+      specialRules: {
+        ...s.specialRules,
+        random: true,
+        randomSeed: Math.random().toString(36).slice(2),
+      },
+    }))
   }
 
   // ── Classes ───────────────────────────────────────────────────────────────────
@@ -2335,7 +2354,10 @@ export default function App() {
               </div>
               <div className="special-rule-row compact">
                 <div><strong>ランダム</strong><p>複数候補からランダムに選びます。</p></div>
-                <label className="toggle-label"><input type="checkbox" checked={specialRules.random === true} onChange={(e) => setSpecialRule('random', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span></label>
+                <div className="special-rule-actions">
+                  <button type="button" className="ghost-btn" onClick={rerollRandomAssignments} disabled={!canEditAdmin}>再抽選</button>
+                  <label className="toggle-label"><input type="checkbox" checked={specialRules.random === true} onChange={(e) => setSpecialRule('random', e.target.checked)} disabled={!canEditAdmin} /><span className="toggle-track"><span className="toggle-thumb" /></span></label>
+                </div>
               </div>
             </div>
           </aside>
