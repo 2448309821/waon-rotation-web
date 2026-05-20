@@ -250,8 +250,9 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     const meetingOnlyTeachers    = teachers.filter(t => behaviorOf[getStatus(t)] === 'meeting_only')
     const maybeMeetingTeachers   = teachers.filter(t => behaviorOf[getStatus(t)] === 'maybe_meeting')
 
+    const sessionSeed = `${seed}:${session.key}:${remainingClasses.join('|')}`
     let selectedMaybeTeachers = []
-    let autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, seed, assignmentCounts) : {}
+    let autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes`, assignmentCounts) : {}
 
     if (!autoAssignments) {
       const sortedMaybe = [...maybeTeachers].sort((a, b) => comparePriority(a, b, teachers, session.meeting))
@@ -259,7 +260,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
         selectedMaybeTeachers = [...selectedMaybeTeachers, t]
         autoAssignments = remainingClasses.length > 0 ? tryAssign(
           [...yesTeachers, ...selectedMaybeTeachers],
-          remainingClasses, classRules, teachers, session.meeting, random, seed, assignmentCounts,
+          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts,
         ) : {}
         if (autoAssignments) break
       }
@@ -276,10 +277,10 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       const pool = [...yesTeachers, ...selectedMaybeTeachers]
       usedClasses = []
       for (const cls of remainingClasses) {
-        if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, seed, assignmentCounts))
+        if (tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}`, assignmentCounts))
           usedClasses.push(cls)
       }
-      autoAssignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, seed, assignmentCounts) ?? {}
+      autoAssignments = tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback`, assignmentCounts) ?? {}
       assignments = { ...assignments, ...autoAssignments }
       unassignedClasses = remainingClasses.filter(c => !usedClasses.includes(c))
       if (unassignedClasses.length > 0)
