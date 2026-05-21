@@ -6,14 +6,14 @@
 - Constraints: keep the existing "なるべく" behavior by allowing over-limit fallback only when no complete in-limit assignment exists.
 
 ## Current Behavior
-- What works now: scheduling first tries teachers who are still under their monthly limit, including adding shortage candidates when needed.
+- What works now: automatic scheduling only uses teachers who are still under their monthly limit, including adding shortage candidates when needed.
 - How to use it: set each teacher's monthly target in teacher settings, then generate or reroll the assignment.
-- Important edge cases: if every complete assignment requires someone over the limit, the scheduler still fills classes and reports the over-limit teacher in notes.
+- Important edge cases: if every complete automatic assignment requires someone over the limit, the class remains unassigned instead of assigning a third automatic class. Manual assignments can still exceed the limit and are reported in notes.
 
 ## How It Works
 - Entry points: `buildSchedule` calls the assignment helpers for each session in month order.
 - State/data flow: `assignmentCounts` tracks how many sessions each teacher has already been assigned this month.
-- UI or API behavior: random reroll still works, but only within the eligible under-limit candidates before fallback.
+- UI or API behavior: random reroll still works, but only within the eligible under-limit candidates.
 - Integration points: class capability rules are still checked by `tryAssign`.
 
 ## Changed Files
@@ -29,13 +29,21 @@
 - Result: build passes; ready for browser confirmation with the user's June data.
 - Next: confirm the table no longer assigns 柴田 a third class when an eligible under-limit teacher can cover it.
 
+### 2026-05-21 - Make automatic limits hard
+- Change: removed the automatic over-limit fallback.
+- Reason: reroll still assigned 柴田 a third class in June, even while leaving another class unassigned.
+- Evidence: user screenshot showed 柴田 assigned on 6/6, 6/13, and 6/20 with a 2-class monthly limit.
+- Result: build passes; ready for local browser confirmation.
+- Next: confirm reroll cannot auto-assign a teacher above the monthly limit.
+
 ## Verification
 | Check | Result | Notes |
 | --- | --- | --- |
 | `npm run build` | pass | Vite build completed; only the existing chunk-size warning remains. |
+| `npm run build` after hard-limit change | pass | Vite build completed; only the existing chunk-size warning remains. |
 
 ## Known Issues
-- If no under-limit complete assignment exists, the scheduler still exceeds the target to avoid leaving classes empty.
+- If no under-limit complete assignment exists, the scheduler may leave classes unassigned. This is intentional so automatic scheduling respects the monthly target.
 
 ## Next Steps
 - Confirm with the user's June example in the browser.
