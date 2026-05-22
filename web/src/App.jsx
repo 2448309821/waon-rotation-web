@@ -59,6 +59,39 @@ const SEEDED_SESSION_TYPES = {
     '5/9': 'meeting',
   },
 }
+const FIXED_MAY_2026_CLASSES = {
+  '5/9': ['\u304d\u304f', '\u3055\u304f\u3089', '\u308f\u304b\u3070', '\u5165\u9580'],
+  '5/16': ['\u304d\u304f', '\u3055\u304f\u3089', '\u308f\u304b\u3070', '\u5165\u9580'],
+  '5/23': ['\u304d\u304f', '\u3055\u304f\u3089', '\u308f\u304b\u3070', '\u5165\u9580'],
+  '5/30': ['\u304d\u304f', '\u3055\u304f\u3089', '\u308f\u304b\u3070', '\u5165\u9580', '\u5165\u9580(\u738b)'],
+}
+const FIXED_MAY_2026_MANUAL = {
+  '5/9': {
+    '\u304d\u304f': '\u5ca1\u5d0e',
+    '\u308f\u304b\u3070': '\u9580\u99ac',
+    '\u5165\u9580': '\u8526\u5c3e',
+    '\u3055\u304f\u3089': '\u88f4',
+  },
+  '5/16': {
+    '\u304d\u304f': '\u5ca1\u5d0e',
+    '\u3055\u304f\u3089': '\u5ca1\u672c',
+    '\u308f\u304b\u3070': '\u8526\u5c3e',
+    '\u5165\u9580': '\u76f8\u826f',
+  },
+  '5/23': {
+    '\u304d\u304f': '\u5ca1\u5d0e',
+    '\u3055\u304f\u3089': '\u5ca1\u672c',
+    '\u308f\u304b\u3070': '\u67f4\u7530',
+    '\u5165\u9580': '\u4eca\u6751',
+  },
+  '5/30': {
+    '\u304d\u304f': '\u5ca1\u672c',
+    '\u3055\u304f\u3089': '\u67f4\u7530',
+    '\u308f\u304b\u3070': '\u4eca\u6751',
+    '\u5165\u9580': '\u76f8\u826f',
+    '\u5165\u9580(\u738b)': '\u88f4',
+  },
+}
 const SEEDED_ATTENDANCE = {
   [SEEDED_MONTH_KEY]: {
     岡本: { '5/9': 'meeting_only', '5/16': 'yes', '5/23': 'yes', '5/30': 'maybe' },
@@ -116,6 +149,9 @@ function mergeState(saved) {
   const mergedStatusOptions = (saved.statusOptions ?? DEFAULT_STATUS_OPTIONS).map((opt) => (
     builtInStatusOptions[opt.id] ? { ...opt, ...builtInStatusOptions[opt.id] } : opt
   ))
+  const savedSessionManualByMonth = saved.sessionManualByMonth ?? {}
+  const savedSessionClassesByMonth = saved.sessionClassesByMonth ?? {}
+  const mayManualIsMissing = Object.keys(savedSessionManualByMonth[SEEDED_MONTH_KEY] ?? {}).length === 0
   return {
     year: saved.year ?? fallback.year,
     month: saved.month ?? fallback.month,
@@ -126,8 +162,19 @@ function mergeState(saved) {
     teachers: saved.teachers ?? DEFAULT_TEACHERS,
     currentTeacher: saved.currentTeacher ?? fallback.currentTeacher,
     sessionTypesByMonth: { ...SEEDED_SESSION_TYPES, ...(saved.sessionTypesByMonth ?? {}) },
-    sessionClassesByMonth: saved.sessionClassesByMonth ?? {},
-    sessionManualByMonth: saved.sessionManualByMonth ?? {},
+    sessionClassesByMonth: {
+      ...savedSessionClassesByMonth,
+      ...(mayManualIsMissing ? {
+        [SEEDED_MONTH_KEY]: {
+          ...(savedSessionClassesByMonth[SEEDED_MONTH_KEY] ?? {}),
+          ...FIXED_MAY_2026_CLASSES,
+        },
+      } : {}),
+    },
+    sessionManualByMonth: {
+      ...savedSessionManualByMonth,
+      ...(mayManualIsMissing ? { [SEEDED_MONTH_KEY]: FIXED_MAY_2026_MANUAL } : {}),
+    },
     sessionSpecialNotesByMonth: saved.sessionSpecialNotesByMonth ?? {},
     attendanceByMonth: { ...SEEDED_ATTENDANCE, ...(saved.attendanceByMonth ?? {}) },
     memosByMonth: { ...SEEDED_MEMOS, ...(saved.memosByMonth ?? {}) },
