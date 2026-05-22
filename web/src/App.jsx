@@ -790,7 +790,6 @@ export default function App() {
   const todayKey = `${today.getMonth() + 1}/${today.getDate()}`
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
   const isThisMonth = year === today.getFullYear() && month === today.getMonth() + 1
-  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, sessionSpecialNotesByMonth, defaultClasses, allClasses, specialRules)
   const attendance = attendanceByMonth[monthKey] ?? {}
   const memos = memosByMonth[monthKey] ?? {}
   const meetingNotes = meetingNotesByMonth[monthKey] ?? {}
@@ -800,10 +799,18 @@ export default function App() {
   const isMonthLocked = !!(lockedMonths?.[monthKey])
   const canEditAdmin = isAdmin && !isMonthLocked
   const activeBrandIconId = BRAND_ICONS.some((icon) => icon.id === brandIconId) ? brandIconId : BRAND_ICONS[0].id
+  const effectiveSpecialRules = specialRulesForMonthKey(monthKey)
+
+  function specialRulesForMonthKey(targetMonthKey) {
+    const monthSeed = specialRules.randomSeedByMonth?.[targetMonthKey]
+    return monthSeed ? { ...specialRules, randomSeed: monthSeed } : specialRules
+  }
+
+  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, sessionSpecialNotesByMonth, defaultClasses, allClasses, effectiveSpecialRules)
 
   let schedule = []
   try {
-    schedule = buildSchedule(attendance, sessions, teachers, statusOptions, specialRules)
+    schedule = buildSchedule(attendance, sessions, teachers, statusOptions, effectiveSpecialRules)
   } catch (error) {
     console.error(error)
   }
@@ -1301,14 +1308,19 @@ export default function App() {
 
   function setSpecialRule(key, value) {
     if (!canEditAdmin) return
-    setState((s) => ({
-      ...s,
-      specialRules: {
+    setState((s) => {
+      const nextRules = {
         ...s.specialRules,
         [key]: value,
-        ...(key === 'random' && value === true ? { randomSeed: Math.random().toString(36).slice(2) } : {}),
-      },
-    }))
+      }
+      if (key === 'random' && value === true) {
+        nextRules.randomSeedByMonth = {
+          ...(s.specialRules?.randomSeedByMonth ?? {}),
+          [monthKey]: Math.random().toString(36).slice(2),
+        }
+      }
+      return { ...s, specialRules: nextRules }
+    })
   }
 
   function rerollRandomAssignments() {
@@ -1318,7 +1330,10 @@ export default function App() {
       specialRules: {
         ...s.specialRules,
         random: true,
-        randomSeed: Math.random().toString(36).slice(2),
+        randomSeedByMonth: {
+          ...(s.specialRules?.randomSeedByMonth ?? {}),
+          [monthKey]: Math.random().toString(36).slice(2),
+        },
       },
     }))
   }
@@ -2711,7 +2726,12 @@ export default function App() {
   }
 
   function getStatusInfo(teacherName, sessionKey) {
-    const statusId = getEffectiveStatus(teacherName, sessionKey)
+    return getStatusInfoFromAttendance(teacherName, sessionKey, attendance)
+  }
+
+  function getStatusInfoFromAttendance(teacherName, sessionKey, sourceAttendance) {
+    const teacher = teachers.find((t) => t.name === teacherName)
+    const statusId = sourceAttendance[teacherName]?.[sessionKey] ?? teacher?.defaultStatus ?? 'no'
     const option = statusOptions.find((item) => item.id === statusId)
     return {
       id: statusId,
@@ -2763,6 +2783,57 @@ export default function App() {
       .map(([className]) => className)
   }
 
+  function dateForSession(session, targetYear = year, targetMonth = month) {
+    const [, dayPart] = String(session.key).split('/')
+    const day = Number(dayPart)
+    return Number.isFinite(day) ? new Date(targetYear, targetMonth - 1, day) : null
+  }
+
+  function buildScheduleForMonth(targetYear, targetMonth) {
+    if (targetYear === year && targetMonth === month) {
+      return { year, month, schedule, attendance }
+    }
+    const targetMonthKey = `${targetYear}-${targetMonth}`
+    const targetSpecialRules = specialRulesForMonthKey(targetMonthKey)
+    const targetSessions = generateSessions(
+      targetYear,
+      targetMonth,
+      sessionTypesByMonth,
+      sessionClassesByMonth,
+      sessionManualByMonth,
+      sessionSpecialNotesByMonth,
+      defaultClasses,
+      allClasses,
+      targetSpecialRules,
+    )
+    const targetAttendance = attendanceByMonth[targetMonthKey] ?? {}
+    let targetSchedule = []
+    try {
+      targetSchedule = buildSchedule(targetAttendance, targetSessions, teachers, statusOptions, targetSpecialRules)
+    } catch (error) {
+      console.error(error)
+    }
+    return { year: targetYear, month: targetMonth, schedule: targetSchedule, attendance: targetAttendance }
+  }
+
+  function findNextSession() {
+    const startYear = todayDate.getFullYear()
+    const startMonth = todayDate.getMonth() + 1
+    for (let offset = 0; offset < 12; offset += 1) {
+      const date = new Date(startYear, startMonth - 1 + offset, 1)
+      const targetYear = date.getFullYear()
+      const targetMonth = date.getMonth() + 1
+      const target = buildScheduleForMonth(targetYear, targetMonth)
+      const found = target.schedule.find((session) => {
+        if (session.closed) return false
+        const sessionDate = dateForSession(session, targetYear, targetMonth)
+        return sessionDate && sessionDate >= todayDate
+      })
+      if (found) return { ...found, calendarYear: targetYear, calendarMonth: targetMonth, calendarAttendance: target.attendance }
+    }
+    return schedule.find((session) => !session.closed) ?? schedule[0]
+  }
+
   function MobileHeader({ title, subtitle }) {
     return (
       <header className="mobile-header">
@@ -2786,11 +2857,12 @@ export default function App() {
   }
 
   function MobileHomeView() {
-    const nextSession = schedule.find((session) => !session.closed) ?? schedule[0]
+    const nextSession = findNextSession()
+    const nextAttendance = nextSession?.calendarAttendance ?? attendance
     const substituteCount = nextSession
       ? teachers.filter((teacher) => {
           const assigned = assignedClassesFor(nextSession, teacher.name).length > 0
-          const tone = statusTone(getStatusInfo(teacher.name, nextSession.key).behavior)
+          const tone = statusTone(getStatusInfoFromAttendance(teacher.name, nextSession.key, nextAttendance).behavior)
           return !assigned && (tone === 'yes' || tone === 'maybe')
         }).length
       : 0
