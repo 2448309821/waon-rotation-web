@@ -295,6 +295,72 @@ function buildMarkdownExport(year, month, teachers, sessions, schedule, memos) {
   return lines.join('\n')
 }
 
+function scheduleTypeLabel(session) {
+  if (session.closed) return '休み'
+  if (session.meeting) return '例会'
+  return '通常'
+}
+
+function buildRotationTableDocx(year, month, teachers, sessions, schedule) {
+  const tableWidth = 9000
+  const nameColWidth = 1400
+  const dayColWidth = Math.floor((tableWidth - nameColWidth) / Math.max(1, sessions.length))
+  const colGrid = [nameColWidth, ...sessions.map(() => dayColWidth)]
+  const bodyRows = []
+
+  const makeCell = (text, width, { align = 'center', bold = false } = {}) => (
+    `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar></w:tcPr>${wordParagraph(text, { align, bold, size: 28, after: 0, line: 280 })}</w:tc>`
+  )
+
+  const makeRow = (cells) => `<w:tr>${cells.join('')}</w:tr>`
+
+  bodyRows.push(makeRow([
+    makeCell('', nameColWidth, { bold: true }),
+    ...sessions.map((s) => makeCell(s.label, dayColWidth, { bold: true })),
+  ]))
+  bodyRows.push(makeRow([
+    makeCell('区分', nameColWidth),
+    ...schedule.map((s) => makeCell(scheduleTypeLabel(s), dayColWidth)),
+  ]))
+  bodyRows.push(makeRow([
+    makeCell('特別連絡', nameColWidth, { align: 'left' }),
+    ...schedule.map((s) => makeCell(s.special || '', dayColWidth, { align: 'left' })),
+  ]))
+
+  for (const teacher of teachers) {
+    const row = schedule.map((s) => (
+      Object.entries(s.assignments || {})
+        .filter(([, assignedTeacher]) => assignedTeacher === teacher.name)
+        .map(([className]) => className)
+        .join(' / ')
+    ))
+    bodyRows.push(makeRow([
+      makeCell(teacher.name, nameColWidth),
+      ...row.map((cellText) => makeCell(cellText, dayColWidth, { align: 'left' })),
+    ]))
+  }
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:body>
+${wordParagraph(`${year} 年 ${month} 月  担当表`, { align: 'center', bold: true, size: 48, after: 240, line: 360 })}
+${wordParagraph('☆　当番は当てませんので、当日の担当者が協力して教室の準備をお願いします。', { size: 24, after: 140, line: 260 })}
+<w:tbl>
+<w:tblPr><w:tblW w:w="${tableWidth}" w:type="dxa"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/><w:tblBorders><w:top w:val="single" w:sz="8" w:color="595959"/><w:left w:val="single" w:sz="8" w:color="595959"/><w:bottom w:val="single" w:sz="8" w:color="595959"/><w:right w:val="single" w:sz="8" w:color="595959"/><w:insideH w:val="single" w:sz="8" w:color="595959"/><w:insideV w:val="single" w:sz="8" w:color="595959"/></w:tblBorders></w:tblPr>
+<w:tblGrid>${colGrid.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>
+${bodyRows.join('')}
+</w:tbl>
+${wordParagraph('＊事務業務はその日の担当者が助け合って行い、最後に全員で確認してください。', { size: 24, after: 0, line: 260 })}
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+</w:body></w:document>`
+
+  return makeZip([
+    { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+    { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+    { name: 'word/document.xml', data: documentXml },
+  ])
+}
+
 // ── LINE text builder ─────────────────────────────────────────────────────────
 function buildLineText(year, month, schedule, memos) {
   const lines = [`【${year}年${month}月 担当表】`, '']
@@ -1158,6 +1224,14 @@ export default function App() {
     URL.revokeObjectURL(url)
   }
 
+  function exportWordTable() {
+    const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.docx`
+    const blob = buildRotationTableDocx(year, month, teachers, sessions, schedule)
+    downloadBlob(blob, fileName)
+    setExportMessage('Word担当表を保存しました。')
+    setTimeout(() => setExportMessage(''), 3500)
+  }
+
   // ── Archive ───────────────────────────────────────────────────────────────────
   function downloadArchive(key, arc) {
     const blob = new Blob([arc.markdown], { type: 'text/markdown;charset=utf-8' })
@@ -1974,6 +2048,7 @@ export default function App() {
       <div className="action-row">
         <button type="button" className="ghost-btn" onClick={copyLineText}>LINE用テキスト</button>
         <button type="button" className="ghost-btn" onClick={exportMonthTable}>月表を保存</button>
+        <button type="button" className="ghost-btn" onClick={exportWordTable}>Word表</button>
         <button type="button" className="ghost-btn" onClick={exportHtmlTable}>HTML表</button>
         <button type="button" className={isMonthLocked ? 'success-btn' : 'primary-btn'} onClick={isMonthLocked ? unlockMonth : finalizeMonth}>
           {isMonthLocked ? '確定済み' : '今月を確定'}
