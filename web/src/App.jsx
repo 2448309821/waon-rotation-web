@@ -190,6 +190,90 @@ function mergeState(saved) {
   }
 }
 
+const REMOTE_PROTECTED_STATE_KEYS = [
+  'sessionTypesByMonth',
+  'sessionClassesByMonth',
+  'sessionManualByMonth',
+  'sessionSpecialNotesByMonth',
+  'attendanceByMonth',
+  'memosByMonth',
+  'lockedMonths',
+  'archivedSchedules',
+  'meetingNotesByMonth',
+  'myMemosByTeacher',
+  'lessonReportsByMonth',
+  'studentDefaults',
+  'attendanceCountsByMonth',
+]
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function parseStateSnapshot(snapshot) {
+  try {
+    return snapshot ? JSON.parse(snapshot) : null
+  } catch {
+    return null
+  }
+}
+
+function sameStateValue(a, b) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return Object.is(a, b)
+  }
+}
+
+function mergeProtectedValueForSave(localValue, baseValue, remoteValue) {
+  if (localValue == null && isPlainObject(remoteValue)) {
+    return remoteValue
+  }
+
+  if (!isPlainObject(localValue)) {
+    return sameStateValue(localValue, baseValue) ? (remoteValue ?? localValue) : localValue
+  }
+
+  const remoteObject = isPlainObject(remoteValue) ? remoteValue : {}
+  const baseObject = isPlainObject(baseValue) ? baseValue : {}
+  const nextValue = { ...remoteObject }
+
+  if (Object.keys(localValue).length === 0 && Object.keys(remoteObject).length > 0) {
+    return remoteObject
+  }
+
+  Object.entries(localValue).forEach(([key, localChild]) => {
+    const baseChild = baseObject[key]
+    const remoteChild = remoteObject[key]
+
+    if (sameStateValue(localChild, baseChild)) {
+      nextValue[key] = remoteChild ?? localChild
+      return
+    }
+
+    if (isPlainObject(localChild) && (isPlainObject(baseChild) || isPlainObject(remoteChild))) {
+      nextValue[key] = mergeProtectedValueForSave(localChild, baseChild, remoteChild)
+      return
+    }
+
+    nextValue[key] = localChild
+  })
+
+  return nextValue
+}
+
+function buildProtectedStateForSave(localState, remoteState, baseState) {
+  if (!remoteState) return localState
+  const nextState = { ...localState }
+
+  REMOTE_PROTECTED_STATE_KEYS.forEach((key) => {
+    nextState[key] = mergeProtectedValueForSave(localState?.[key], baseState?.[key], remoteState?.[key])
+  })
+
+  return nextState
+}
+
 function loadLocalState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -1113,7 +1197,24 @@ export default function App() {
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
-      const payload = { id: ROTATION_STATE_ID, state, updated_at: new Date().toISOString() }
+      const { data: remoteData, error: remoteError } = await supabase
+        .from('rotation_states')
+        .select('state')
+        .eq('id', ROTATION_STATE_ID)
+        .maybeSingle()
+
+      if (remoteError) {
+        console.error(remoteError)
+        setCloudStatus('error')
+        setCloudMessage('Supabase save failed.')
+        return
+      }
+
+      const remoteState = remoteData?.state ? mergeState(remoteData.state) : null
+      const baseState = parseStateSnapshot(lastSyncedStateRef.current)
+      const stateToSave = buildProtectedStateForSave(state, remoteState, baseState)
+      const saveSnapshot = JSON.stringify(stateToSave)
+      const payload = { id: ROTATION_STATE_ID, state: stateToSave, updated_at: new Date().toISOString() }
       const { error } = await supabase.from('rotation_states').upsert(payload)
 
       if (error) {
@@ -1123,7 +1224,8 @@ export default function App() {
         return
       }
 
-      lastSyncedStateRef.current = snapshot
+      lastSyncedStateRef.current = saveSnapshot
+      if (saveSnapshot !== snapshot) setState(stateToSave)
       setCloudStatus('ready')
       setCloudMessage('Saved to Supabase. Other devices are synced.')
     }, 700)
