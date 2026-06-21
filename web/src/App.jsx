@@ -631,8 +631,15 @@ function countLessonAttendees(attendees, fallback = '') {
   return fallback ? String(fallback) : ''
 }
 
+
+function lessonAttendeeCountValue(report) {
+  const manualCount = String(report?.attendeeCount ?? '').trim()
+  if (manualCount) return manualCount
+  return countLessonAttendees(report?.attendees)
+}
+
 function buildLessonReportDocx(report) {
-  const attendeeCount = countLessonAttendees(report.attendees, report.attendeeCount)
+  const attendeeCount = lessonAttendeeCountValue(report)
   const { tableWidth, colWidths, rowHeights, topMargin, rightMargin, bottomMargin, leftMargin } = LESSON_REPORT_WORD
   const unitParagraphs = textToWordParagraphs(`単元　${report.unit || ''}`, { size: 24, after: 0, line: 240 })
   const contentParagraphs = contentToNumberedWordParagraphs(report.content)
@@ -665,7 +672,7 @@ ${wordRow(wordCell(handoffParagraphs, { span: 3, width: tableWidth, padTop: 55, 
 }
 
 function buildLessonReportPdfHtml(report) {
-  const attendeeCount = countLessonAttendees(report.attendees, report.attendeeCount)
+  const attendeeCount = lessonAttendeeCountValue(report)
   const contentItems = String(report.content || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const handoffItems = String(report.handoff || '').split(/\r?\n/).map((line) => line.trim().replace(/^●\s*/, '')).filter(Boolean)
   const page = LESSON_REPORT_PAGE
@@ -738,7 +745,7 @@ function buildLessonReportPdfHtml(report) {
 }
 
 function buildLessonReportPdfElement(report) {
-  const attendeeCount = countLessonAttendees(report.attendees, report.attendeeCount)
+  const attendeeCount = lessonAttendeeCountValue(report)
   const contentItems = String(report.content || '').split(/\r?\n/).map((line) => line.trim().replace(/^\d+[.)．、]\s*/, '').replace(/\*\*/g, '')).filter(Boolean)
   const handoffItems = String(report.handoff || '').split(/\r?\n/).map((line) => line.trim().replace(/^●\s*/, '').replace(/\*\*/g, '')).filter(Boolean)
   const page = LESSON_REPORT_PAGE
@@ -1737,7 +1744,29 @@ export default function App() {
 
   function setLessonReportField(reportId, field, value) {
     if (field === 'attendees') {
-      updateLessonReport(reportId, { attendees: value, attendeeCount: countLessonAttendees(value) })
+      setState((s) => {
+        const currentReport = (((s.lessonReportsByMonth ?? {})[monthKey] ?? {})[reportId] ?? {})
+        const currentManualCount = String(currentReport.attendeeCount ?? '').trim()
+        const previousAutoCount = countLessonAttendees(currentReport.attendees)
+        const nextUpdates = { attendees: value }
+        if (!currentManualCount || currentManualCount === previousAutoCount) {
+          nextUpdates.attendeeCount = countLessonAttendees(value)
+        }
+        return {
+          ...s,
+          lessonReportsByMonth: {
+            ...(s.lessonReportsByMonth ?? {}),
+            [monthKey]: {
+              ...((s.lessonReportsByMonth ?? {})[monthKey] ?? {}),
+              [reportId]: {
+                ...currentReport,
+                ...nextUpdates,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          },
+        }
+      })
       return
     }
     updateLessonReport(reportId, { [field]: value })
@@ -1746,7 +1775,7 @@ export default function App() {
   function normalizeLessonReportForExport(report) {
     return {
       ...report,
-      attendeeCount: countLessonAttendees(report.attendees, report.attendeeCount),
+      attendeeCount: lessonAttendeeCountValue(report),
     }
   }
 
@@ -2856,7 +2885,8 @@ export default function App() {
   function LessonReportFields({ report, compact = false }) {
     if (!report) return <p className="empty-msg">担当がある授業がまだありません。</p>
     const canEditReport = !!identity
-    const countValue = countLessonAttendees(report.attendees, report.attendeeCount)
+    const autoCountValue = countLessonAttendees(report.attendees)
+    const countValue = lessonAttendeeCountValue(report)
     return (
       <div className={compact ? 'lesson-form lesson-form-compact' : 'lesson-form'}>
         <section className="lesson-form-card">
@@ -2872,7 +2902,7 @@ export default function App() {
         <section className="lesson-form-card">
           <div className="lesson-card-title"><h3>出席者</h3><span>計{countValue || 0}名</span></div>
           <textarea value={report.attendees || ''} onChange={(e) => setLessonReportField(report.id, 'attendees', e.target.value)} placeholder="孟莉（中）伊藤（中）鈴木（中）..." rows={compact ? 4 : 3} disabled={!canEditReport} />
-          <label className="lesson-count-field"><span>人数</span><input value={countValue} readOnly placeholder="5" disabled={!canEditReport} /></label>
+          <label className="lesson-count-field"><span>人数</span><input value={report.attendeeCount ?? ''} onChange={(e) => setLessonReportField(report.id, 'attendeeCount', e.target.value)} placeholder={autoCountValue || '5'} disabled={!canEditReport} /></label>
         </section>
 
         <section className="lesson-form-card">
@@ -2903,7 +2933,7 @@ export default function App() {
           <span>クラス {report.className}</span>
           <span>担当 {report.teacherName}</span>
         </div>
-        <p>出席者 {report.attendees || '未入力'}　計{countLessonAttendees(report.attendees, report.attendeeCount) || '0'}名</p>
+        <p>出席者 {report.attendees || '未入力'}　計{lessonAttendeeCountValue(report) || '0'}名</p>
         <p>単元 {report.unit || '未入力'}</p>
         <p>{report.content || '授業内容を入力するとここに表示されます。'}</p>
         <p>申し送り及び感想：{report.handoff || '未入力'}</p>
