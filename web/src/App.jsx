@@ -226,6 +226,10 @@ function sameStateValue(a, b) {
   }
 }
 
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
 function mergeProtectedValueForSave(localValue, baseValue, remoteValue) {
   if (localValue == null && isPlainObject(remoteValue)) {
     return remoteValue
@@ -238,10 +242,6 @@ function mergeProtectedValueForSave(localValue, baseValue, remoteValue) {
   const remoteObject = isPlainObject(remoteValue) ? remoteValue : {}
   const baseObject = isPlainObject(baseValue) ? baseValue : {}
   const nextValue = { ...remoteObject }
-
-  if (Object.keys(localValue).length === 0 && Object.keys(remoteObject).length > 0) {
-    return remoteObject
-  }
 
   Object.entries(localValue).forEach(([key, localChild]) => {
     const baseChild = baseObject[key]
@@ -258,6 +258,13 @@ function mergeProtectedValueForSave(localValue, baseValue, remoteValue) {
     }
 
     nextValue[key] = localChild
+  })
+
+  Object.keys(remoteObject).forEach((key) => {
+    if (hasOwn(localValue, key)) return
+    if (hasOwn(baseObject, key)) {
+      delete nextValue[key]
+    }
   })
 
   return nextValue
