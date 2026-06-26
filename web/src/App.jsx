@@ -1433,9 +1433,27 @@ export default function App() {
   function resetSessionClasses(sessionKey) {
     if (!canEditAdmin) return
     setState((s) => {
-      const byMonth = { ...(s.sessionClassesByMonth[monthKey] ?? {}) }
-      delete byMonth[sessionKey]
-      return { ...s, sessionClassesByMonth: { ...s.sessionClassesByMonth, [monthKey]: byMonth } }
+      const classesByMonth = { ...(s.sessionClassesByMonth[monthKey] ?? {}) }
+      delete classesByMonth[sessionKey]
+
+      const manualByMonth = { ...(s.sessionManualByMonth[monthKey] ?? {}) }
+      delete manualByMonth[sessionKey]
+
+      const countsByMonth = { ...(s.attendanceCountsByMonth[monthKey] ?? {}) }
+      const countsBySession = { ...(countsByMonth[sessionKey] ?? {}) }
+      delete countsBySession.students
+      if (Object.keys(countsBySession).length === 0) {
+        delete countsByMonth[sessionKey]
+      } else {
+        countsByMonth[sessionKey] = countsBySession
+      }
+
+      return {
+        ...s,
+        sessionClassesByMonth: { ...s.sessionClassesByMonth, [monthKey]: classesByMonth },
+        sessionManualByMonth: { ...s.sessionManualByMonth, [monthKey]: manualByMonth },
+        attendanceCountsByMonth: { ...s.attendanceCountsByMonth, [monthKey]: countsByMonth },
+      }
     })
   }
 
@@ -2590,6 +2608,8 @@ export default function App() {
                 const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
                 const classes = getSessionClasses(session)
                 const isOverridden = !!sessionClassesByMonth[monthKey]?.[session.key]
+                  || !!sessionManualByMonth[monthKey]?.[session.key]
+                  || !!attendanceCountsByMonth[monthKey]?.[session.key]?.students
                 const isWangWeek = session.weekIndex % 2 === 1
                 const past = isPast(session.key)
                 const td = isToday(session.key)
