@@ -1,6 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
 import '@fontsource/noto-sans-jp/400.css'
 import '@fontsource/noto-sans-jp/700.css'
 import waonIcon1 from './assets/brand-icons/waon-icon-1.webp'
@@ -20,6 +18,13 @@ import {
   sessionTypeOptions,
 } from './schedule'
 import { ROTATION_STATE_ID, supabase } from './supabase'
+import {
+  createBackupEnvelope,
+  loadLocalSnapshots,
+  parseBackupText,
+  saveLocalSnapshot,
+  summarizeState,
+} from './stateBackup'
 
 function AutoTextarea({ value, onChange, rows = 3, style, ...props }) {
   const ref = useRef(null)
@@ -341,7 +346,22 @@ function ClassChip({ label, checked, onChange, disabled = false }) {
   )
 }
 
-function buildHtmlExport(year, month, teachers, sessions, schedule) {
+function scheduleCellText(teacher, session, attendance, statusOptions) {
+  const assigned = Object.entries(session.assignments || {})
+    .filter(([, assignedTeacher]) => assignedTeacher === teacher.name)
+    .map(([className]) => className)
+    .join(' / ')
+  if (assigned) return assigned
+  if (session.closed) return ''
+  if (session.meetingOnlyTeachers?.includes(teacher.name) || session.maybeMeetingTeachers?.includes(teacher.name)) return '会議'
+  const statusId = attendance?.[teacher.name]?.[session.key] ?? teacher.defaultStatus ?? 'no'
+  const behavior = statusOptions.find((option) => option.id === statusId)?.behavior ?? 'no'
+  if (behavior === 'yes') return '○'
+  if (behavior === 'maybe' || behavior === 'maybe_meeting') return '△'
+  return '×'
+}
+
+function buildHtmlExport(year, month, teachers, sessions, schedule, attendance, statusOptions) {
   const rows = []
   rows.push('<html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-size:14px}td,th{border:1px solid #000;padding:6px 10px;text-align:center}th{background:#f3f4f6}</style></head><body>')
   rows.push(`<h1>${year}年${month}月 担当表</h1>`)
@@ -351,10 +371,7 @@ function buildHtmlExport(year, month, teachers, sessions, schedule) {
   rows.push('<tr><td>区分</td>' + schedule.map((s) => `<td>${s.closed ? '休み' : s.meeting ? '例会' : '通常'}</td>`).join('') + '</tr>')
   rows.push('<tr><td>特別連絡</td>' + schedule.map((s) => `<td>${s.special || ''}</td>`).join('') + '</tr>')
   for (const teacher of teachers) {
-    const row = schedule.map((s) => {
-      const classes = Object.entries(s.assignments || {}).filter(([, t]) => t === teacher.name).map(([cls]) => cls).join('<br>')
-      return `<td>${classes}</td>`
-    })
+    const row = schedule.map((s) => `<td>${scheduleCellText(teacher, s, attendance, statusOptions)}</td>`)
     rows.push(`<tr><td><b>${teacher.name}</b></td>${row.join('')}</tr>`)
   }
 rows.push('</table>')
@@ -363,7 +380,7 @@ rows.push('</table>')
   return rows.join('\n')
 }
 
-function buildMarkdownExport(year, month, teachers, sessions, schedule, memos) {
+function buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions) {
   const lines = []
   lines.push(`# ${year}年${month}月 担当表`)
   lines.push('')
@@ -374,7 +391,7 @@ function buildMarkdownExport(year, month, teachers, sessions, schedule, memos) {
     lines.push(`| 未担当 | ${schedule.map((s) => (s.unassignedClasses || []).join('、')).join(' | ')} |`)
   }
   for (const teacher of teachers) {
-    const row = schedule.map((s) => Object.entries(s.assignments).filter(([, t]) => t === teacher.name).map(([cls]) => cls).join(' / '))
+    const row = schedule.map((s) => scheduleCellText(teacher, s, attendance, statusOptions))
     lines.push(`| ${teacher.name} | ${row.join(' | ')} |`)
   }
   lines.push('')
@@ -392,7 +409,7 @@ function scheduleTypeLabel(session) {
   return '通常'
 }
 
-function buildRotationTableDocx(year, month, teachers, sessions, schedule) {
+function buildRotationTableDocx(year, month, teachers, sessions, schedule, attendance, statusOptions) {
   const tableWidth = 9000
   const nameColWidth = 1400
   const dayColWidth = Math.floor((tableWidth - nameColWidth) / Math.max(1, sessions.length))
@@ -419,12 +436,7 @@ function buildRotationTableDocx(year, month, teachers, sessions, schedule) {
   ]))
 
   for (const teacher of teachers) {
-    const row = schedule.map((s) => (
-      Object.entries(s.assignments || {})
-        .filter(([, assignedTeacher]) => assignedTeacher === teacher.name)
-        .map(([className]) => className)
-        .join(' / ')
-    ))
+    const row = schedule.map((s) => scheduleCellText(teacher, s, attendance, statusOptions))
     bodyRows.push(makeRow([
       makeCell(teacher.name, nameColWidth),
       ...row.map((cellText) => makeCell(cellText, dayColWidth, { align: 'left' })),
@@ -963,7 +975,7 @@ export default function App() {
   const [textScale, setTextScale] = useState(loadTextScale)
   const [textScaleDraft, setTextScaleDraft] = useState(() => String(loadTextScale()))
   const [cloudStatus, setCloudStatus] = useState('connecting')
-  const [cloudMessage, setCloudMessage] = useState('Connecting to Supabase...')
+  const [cloudMessage, setCloudMessage] = useState('共有データに接続しています...')
   const [exportMessage, setExportMessage] = useState('')
   const [sessionOpen, setSessionOpen] = useState(true)
   const [specialOpen, setSpecialOpen] = useState(false)
@@ -977,6 +989,15 @@ export default function App() {
   const [isMobileViewport, setIsMobileViewport] = useState(false)
   const [mobileAdminPanel, setMobileAdminPanel] = useState('sessions')
   const [activeLessonReportId, setActiveLessonReportId] = useState('')
+  const [backupHistory, setBackupHistory] = useState(loadLocalSnapshots)
+  const [restoreCandidate, setRestoreCandidate] = useState(null)
+  const [backupMessage, setBackupMessage] = useState('')
+  const [mailPanelOpen, setMailPanelOpen] = useState(false)
+  const [mailDispatchStatus, setMailDispatchStatus] = useState('idle')
+  const [mailDispatchMessage, setMailDispatchMessage] = useState('')
+  const [lessonMailPanelOpen, setLessonMailPanelOpen] = useState(false)
+  const [lessonMailDispatchStatus, setLessonMailDispatchStatus] = useState('idle')
+  const [lessonMailDispatchMessage, setLessonMailDispatchMessage] = useState('')
   const [navOpen, setNavOpen] = useState(false)
   const [showNewBulletin, setShowNewBulletin] = useState(false)
   const [newBulletinText, setNewBulletinText] = useState('')
@@ -990,7 +1011,9 @@ export default function App() {
   const cloudReadyRef = useRef(false)
   const saveTimerRef = useRef(null)
   const lastSyncedStateRef = useRef('')
+  const stateRef = useRef(state)
   const urlTeacherRef = useRef(null)
+  const backupFileRef = useRef(null)
   const bulletinDragRef = useRef(null)
   const teacherDragRef = useRef(null)
 
@@ -1069,6 +1092,10 @@ export default function App() {
   }, [uiMode])
 
   // ── Persist local state ──────────────────────────────────────────────────────
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
@@ -1167,7 +1194,7 @@ export default function App() {
 
     async function loadRemoteState() {
       setCloudStatus('connecting')
-      setCloudMessage('Loading shared data from Supabase...')
+      setCloudMessage('共有データを読み込んでいます...')
 
       const { data, error } = await supabase
         .from('rotation_states')
@@ -1180,20 +1207,21 @@ export default function App() {
       if (error) {
         console.error(error)
         setCloudStatus('error')
-        setCloudMessage('Supabase load failed. Check README and schema setup.')
+        setCloudMessage('共有データを読み込めませんでした。接続設定を確認してください。')
         return
       }
 
       if (data?.state) {
         const merged = mergeState(data.state)
         const snapshot = JSON.stringify(merged)
+        setBackupHistory(saveLocalSnapshot(stateRef.current, 'Supabase読込前'))
         lastSyncedStateRef.current = snapshot
         setState(merged)
         setCloudStatus('ready')
-        setCloudMessage('Shared data loaded. Other devices will see the same data.')
+        setCloudMessage('共有データを読み込みました。ほかの端末にも同じ内容が表示されます。')
       } else {
         setCloudStatus('ready')
-        setCloudMessage('Shared storage is empty. Your next change will create it.')
+        setCloudMessage('共有データはまだありません。次の変更時に作成します。')
       }
 
       cloudReadyRef.current = true
@@ -1207,13 +1235,24 @@ export default function App() {
         if (!alive) return
         const remoteState = payload.new?.state
         if (!remoteState) return
-        const merged = mergeState(remoteState)
-        const snapshot = JSON.stringify(merged)
-        if (snapshot === lastSyncedStateRef.current) return
-        lastSyncedStateRef.current = snapshot
-        setState(merged)
+        const mergedRemote = mergeState(remoteState)
+        const remoteSnapshot = JSON.stringify(mergedRemote)
+        if (remoteSnapshot === lastSyncedStateRef.current) return
+        const localState = stateRef.current
+        const localSnapshot = JSON.stringify(localState)
+        const baseState = parseStateSnapshot(lastSyncedStateRef.current)
+        const hasUnsavedLocalChanges = !!lastSyncedStateRef.current && localSnapshot !== lastSyncedStateRef.current
+        const nextState = hasUnsavedLocalChanges
+          ? buildProtectedStateForSave(localState, mergedRemote, baseState)
+          : mergedRemote
+        setBackupHistory(saveLocalSnapshot(stateRef.current, '共有更新前', { minIntervalMs: 5 * 60 * 1000 }))
+        lastSyncedStateRef.current = remoteSnapshot
+        stateRef.current = nextState
+        setState(nextState)
         setCloudStatus('ready')
-        setCloudMessage('Received latest shared data from Supabase.')
+        setCloudMessage(hasUnsavedLocalChanges
+          ? '未保存の入力を残したまま、ほかの端末の更新を取り込みました。'
+          : 'ほかの端末から最新の共有データを受け取りました。')
       })
       .subscribe()
 
@@ -1231,7 +1270,7 @@ export default function App() {
     if (snapshot === lastSyncedStateRef.current) return
 
     setCloudStatus('saving')
-    setCloudMessage('Saving to Supabase...')
+    setCloudMessage('共有データを保存しています...')
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
@@ -1244,7 +1283,7 @@ export default function App() {
       if (remoteError) {
         console.error(remoteError)
         setCloudStatus('error')
-        setCloudMessage('Supabase save failed.')
+        setCloudMessage('共有データを保存できませんでした。')
         return
       }
 
@@ -1253,19 +1292,22 @@ export default function App() {
       const stateToSave = buildProtectedStateForSave(state, remoteState, baseState)
       const saveSnapshot = JSON.stringify(stateToSave)
       const payload = { id: ROTATION_STATE_ID, state: stateToSave, updated_at: new Date().toISOString() }
+      if (remoteState) {
+        setBackupHistory(saveLocalSnapshot(remoteState, 'Supabase保存前', { minIntervalMs: 5 * 60 * 1000 }))
+      }
       const { error } = await supabase.from('rotation_states').upsert(payload)
 
       if (error) {
         console.error(error)
         setCloudStatus('error')
-        setCloudMessage('Supabase save failed.')
+        setCloudMessage('共有データを保存できませんでした。')
         return
       }
 
       lastSyncedStateRef.current = saveSnapshot
       if (saveSnapshot !== snapshot) setState(stateToSave)
       setCloudStatus('ready')
-      setCloudMessage('Saved to Supabase. Other devices are synced.')
+      setCloudMessage('共有データを保存しました。ほかの端末にも反映されます。')
     }, 700)
 
     return () => {
@@ -1276,12 +1318,24 @@ export default function App() {
   // ── Identity ─────────────────────────────────────────────────────────────────
   function selectIdentity(name) {
     setIdentity(name)
+    setMailPanelOpen(false)
+    setMailDispatchStatus('idle')
+    setMailDispatchMessage('')
+    setLessonMailPanelOpen(false)
+    setLessonMailDispatchStatus('idle')
+    setLessonMailDispatchMessage('')
     if (name !== ADMIN_NAME) setState((s) => ({ ...s, currentTeacher: name }))
   }
 
   function switchIdentity() {
     setIdentity('')
     setExportMessage('')
+    setMailPanelOpen(false)
+    setMailDispatchStatus('idle')
+    setMailDispatchMessage('')
+    setLessonMailPanelOpen(false)
+    setLessonMailDispatchStatus('idle')
+    setLessonMailDispatchMessage('')
   }
 
   // ── Month ────────────────────────────────────────────────────────────────────
@@ -1291,7 +1345,7 @@ export default function App() {
   // ── Lock / Finalize ───────────────────────────────────────────────────────────
   function finalizeMonth() {
     if (!isAdmin) return
-    const markdown = buildMarkdownExport(year, month, teachers, sessions, schedule, memos)
+    const markdown = buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions)
     setState((s) => ({
       ...s,
       lockedMonths: { ...(s.lockedMonths ?? {}), [monthKey]: true },
@@ -1330,17 +1384,17 @@ export default function App() {
 
   // ── Markdown export ───────────────────────────────────────────────────────────
   async function exportMonthTable() {
-    const markdown = buildMarkdownExport(year, month, teachers, sessions, schedule, memos)
+    const markdown = buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions)
     const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.md`
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(markdown)
-        setExportMessage('Markdown copied to clipboard.')
+        setExportMessage('Markdownをコピーしました。')
       } else {
-        setExportMessage('Clipboard unavailable. Download started instead.')
+        setExportMessage('コピーできないため、ファイルを保存しました。')
       }
     } catch {
-      setExportMessage('Clipboard unavailable. Download started instead.')
+      setExportMessage('コピーできないため、ファイルを保存しました。')
     }
 
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
@@ -1353,7 +1407,7 @@ export default function App() {
   }
 
   function exportHtmlTable() {
-    const html = buildHtmlExport(year, month, teachers, sessions, schedule)
+    const html = buildHtmlExport(year, month, teachers, sessions, schedule, attendance, statusOptions)
     const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.html`
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -1366,10 +1420,191 @@ export default function App() {
 
   function exportWordTable() {
     const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.docx`
-    const blob = buildRotationTableDocx(year, month, teachers, sessions, schedule)
+    const blob = buildRotationTableDocx(year, month, teachers, sessions, schedule, attendance, statusOptions)
     downloadBlob(blob, fileName)
     setExportMessage('Word担当表を保存しました。')
     setTimeout(() => setExportMessage(''), 3500)
+  }
+
+  function scheduleMailDraft() {
+    const tableText = buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions)
+    return {
+      subject: `【わをん】${year}年${month}月 担当表`,
+      body: `${year}年${month}月の担当表をお知らせします。\n\n${tableText}\n\n内容をご確認ください。\n\n連絡者：${identity || '未選択'}`,
+    }
+  }
+
+  function openScheduleMailPanel() {
+    setMailDispatchStatus('idle')
+    setMailDispatchMessage('')
+    setMailPanelOpen(true)
+  }
+
+  async function copyScheduleMailDraft() {
+    const draft = scheduleMailDraft()
+    try {
+      await navigator.clipboard.writeText(`件名: ${draft.subject}\n\n${draft.body}`)
+      setMailDispatchMessage('メール下書きをコピーしました。')
+    } catch {
+      setMailDispatchMessage('コピーできませんでした。ブラウザの権限を確認してください。')
+    }
+  }
+
+  async function sendScheduleEmail() {
+    if (!identity || !isMonthLocked) return
+    let triggerKey = ''
+    try {
+      triggerKey = sessionStorage.getItem('wawon-schedule-mail-key') || ''
+    } catch {
+      // Continue with a one-time prompt when session storage is unavailable.
+    }
+    if (!triggerKey) {
+      triggerKey = window.prompt('メール送信用キーを入力してください。')?.trim() || ''
+      if (!triggerKey) return
+      try {
+        sessionStorage.setItem('wawon-schedule-mail-key', triggerKey)
+      } catch {
+        // The key remains in memory only for this send.
+      }
+    }
+    const recipientCount = Math.max(0, teachers.length - 1)
+    if (!window.confirm(`${identity}さん以外の${recipientCount}名へ、${year}年${month}月の確定担当表を送信しますか？`)) return
+    setMailDispatchStatus('sending')
+    setMailDispatchMessage('送信しています...')
+    const { data, error } = await supabase.functions.invoke('send-schedule-email', {
+      body: { monthKey, senderName: identity },
+      headers: { 'x-wawon-mail-key': triggerKey },
+    })
+    if (error || !data?.sent) {
+      let responseError = null
+      try {
+        responseError = error?.context?.clone ? await error.context.clone().json() : null
+      } catch {
+        responseError = null
+      }
+      const reason = data?.error || responseError?.error || error?.message || 'mail_send_failed'
+      if (reason === 'invalid_trigger_key') {
+        try {
+          sessionStorage.removeItem('wawon-schedule-mail-key')
+        } catch {
+          // Ignore storage failures.
+        }
+      }
+      setMailDispatchStatus('error')
+      setMailDispatchMessage(reason === 'already_sent'
+        ? 'この月の担当表はすでに送信済みです。'
+        : reason === 'invalid_trigger_key'
+          ? 'メール送信用キーが正しくありません。次回の送信時にもう一度入力してください。'
+          : reason === 'invalid_sender'
+            ? '選択した先生の連絡先設定がありません。管理者へ確認してください。'
+            : 'メール送信機能はまだサーバーに設定されていません。下書きコピーを利用できます。')
+      return
+    }
+    setMailDispatchStatus('sent')
+    setMailDispatchMessage(`${data.recipientCount ?? recipientCount}名へ担当表メールを送信しました。`)
+  }
+
+  function lessonReportMailDraft(report) {
+    if (!report) return { subject: '', body: '', attachmentName: '', mailDateText: '' }
+    const day = Number(String(report.sessionKey || '').split('/')[1])
+    const reportMonth = Number(report.calendarMonth || month)
+    const mailDateText = `${reportMonth}月${Number.isFinite(day) ? day : ''}日`
+    return {
+      mailDateText,
+      subject: `【授業報告】${mailDateText} ${report.className}クラス`,
+      attachmentName: `${mailDateText}_${report.className}_授業記録.docx`,
+      body: [
+        'わをんの皆さま',
+        '',
+        'お疲れさまです。',
+        `${mailDateText}の${report.className}クラスの授業報告をお送りします。`,
+        `担当は${report.teacherName}です。`,
+        '添付のWordファイルをご確認ください。',
+        '',
+        'よろしくお願いいたします。',
+        report.teacherName,
+      ].join('\n'),
+    }
+  }
+
+  function openLessonReportMail() {
+    setLessonMailDispatchStatus('idle')
+    setLessonMailDispatchMessage('')
+    setLessonMailPanelOpen(true)
+  }
+
+  async function sendLessonReportEmail(report) {
+    if (!identity || !report) return
+    if (report.teacherName !== identity) {
+      setLessonMailDispatchStatus('error')
+      setLessonMailDispatchMessage('担当者本人の名前で開いている時だけ送信できます。')
+      return
+    }
+    if (report.status !== '完了' || !report.updatedAt) {
+      setLessonMailDispatchStatus('error')
+      setLessonMailDispatchMessage('授業記録の全項目を入力し、共有データへの保存完了後に送信してください。')
+      return
+    }
+    if (cloudStatus !== 'ready') {
+      setLessonMailDispatchStatus('error')
+      setLessonMailDispatchMessage('共有データの保存完了後に送信してください。')
+      return
+    }
+    let triggerKey = ''
+    try {
+      triggerKey = sessionStorage.getItem('wawon-schedule-mail-key') || ''
+    } catch {
+      // Continue with a one-time prompt when session storage is unavailable.
+    }
+    if (!triggerKey) {
+      triggerKey = window.prompt('メール送信用キーを入力してください。')?.trim() || ''
+      if (!triggerKey) return
+      try {
+        sessionStorage.setItem('wawon-schedule-mail-key', triggerKey)
+      } catch {
+        // The key remains in memory only for this send.
+      }
+    }
+    const recipientCount = Math.max(0, teachers.length - 1)
+    const draft = lessonReportMailDraft(report)
+    if (!window.confirm(`${identity}さん以外の${recipientCount}名へ、${draft.mailDateText}の${report.className}クラス授業報告を送信しますか？`)) return
+    setLessonMailDispatchStatus('sending')
+    setLessonMailDispatchMessage('授業報告を送信しています...')
+    const { data, error } = await supabase.functions.invoke('send-lesson-report-email', {
+      body: { monthKey: report.monthKey || monthKey, reportId: report.id, senderName: identity },
+      headers: { 'x-wawon-mail-key': triggerKey },
+    })
+    if (error || !data?.sent) {
+      let responseError = null
+      try {
+        responseError = error?.context?.clone ? await error.context.clone().json() : null
+      } catch {
+        responseError = null
+      }
+      const reason = data?.error || responseError?.error || error?.message || 'mail_send_failed'
+      if (reason === 'invalid_trigger_key') {
+        try {
+          sessionStorage.removeItem('wawon-schedule-mail-key')
+        } catch {
+          // Ignore storage failures.
+        }
+      }
+      const messages = {
+        already_sent: 'この保存内容はすでに送信済みです。記録を変更して保存すると再送できます。',
+        send_in_progress: 'この授業報告は現在送信中です。少し待ってから確認してください。',
+        invalid_trigger_key: 'メール送信用キーが正しくありません。次回の送信時にもう一度入力してください。',
+        invalid_sender: '選択した先生の連絡先設定がありません。管理者へ確認してください。',
+        sender_not_report_teacher: '担当者本人の名前で開いている時だけ送信できます。',
+        report_not_saved: '授業記録が共有データに保存されていません。',
+        report_incomplete: '単元・授業内容・申し送りを入力してから送信してください。',
+        report_teacher_unavailable: 'この記録の担当者を確認できませんでした。',
+      }
+      setLessonMailDispatchStatus('error')
+      setLessonMailDispatchMessage(messages[reason] || 'メール送信機能はまだサーバーに設定されていません。')
+      return
+    }
+    setLessonMailDispatchStatus('sent')
+    setLessonMailDispatchMessage(`${data.recipientCount ?? recipientCount}名へ授業報告を送信しました。`)
   }
 
   // ── Archive ───────────────────────────────────────────────────────────────────
@@ -1829,6 +2064,10 @@ export default function App() {
     const reportElement = buildLessonReportPdfElement(normalized)
     document.body.appendChild(reportElement)
     try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
       await document.fonts?.ready
       const pxPerMm = reportElement.getBoundingClientRect().width / 210
       const table = reportElement.querySelector('[data-report-table="true"]')
@@ -2046,22 +2285,23 @@ export default function App() {
   // ── Six-screen app navigation ────────────────────────────────────────────────
   const navSections = [
     { id: 'home', label: 'ホーム', adminOnly: false },
-    { id: 'attendance', label: '出席入力', adminOnly: false },
-    { id: 'attendanceStats', label: '出席統計', adminOnly: false },
+    { id: 'attendance', label: '出席', adminOnly: false },
+    { id: 'attendanceStats', label: '出席統計', adminOnly: false, hidden: true },
     { id: 'schedule', label: '担当表', adminOnly: false },
-    { id: 'sessions', label: '各回設定', adminOnly: true },
-    { id: 'settings', label: '先生・クラス設定', adminOnly: true },
+    { id: 'sessions', label: '各回設定', adminOnly: true, hidden: true },
     { id: 'lessonReports', label: '授業記録', adminOnly: false },
     { id: 'collab', label: '伝言板・メモ', adminOnly: false },
+    { id: 'settings', label: '管理設定', adminOnly: true },
   ]
   const mobileNavSections = [
     { id: 'home', label: 'ホーム', shortLabel: 'ホーム', adminOnly: false },
     { id: 'attendance', label: '出席', shortLabel: '出席', adminOnly: false },
-    { id: 'attendanceStats', label: '出席統計', shortLabel: '統計', adminOnly: false },
     { id: 'schedule', label: '担当表', shortLabel: '担当', adminOnly: false },
-    { id: 'mobileAdmin', label: '管理', shortLabel: '管理', adminOnly: true },
-    { id: 'mobileMemo', label: 'メモ・連絡板', shortLabel: 'メモ', adminOnly: false },
-    { id: 'mobileLessonReports', label: '授業記録', shortLabel: '記録', adminOnly: false },
+    { id: 'lessonReports', label: '授業記録', shortLabel: '記録', adminOnly: false },
+    { id: 'mobileMore', label: 'その他', shortLabel: 'その他', adminOnly: false },
+    { id: 'attendanceStats', label: '出席統計', shortLabel: '統計', adminOnly: false, hidden: true },
+    { id: 'collab', label: 'メモ・連絡板', shortLabel: 'メモ', adminOnly: false, hidden: true },
+    { id: 'settings', label: '管理', shortLabel: '管理', adminOnly: true, hidden: true },
   ]
 
   // IntersectionObserver for scroll nav active state — must be before conditional return
@@ -2099,22 +2339,7 @@ export default function App() {
   )).length
   const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
   const lessonReports = lessonReportsByMonth?.[monthKey] ?? {}
-  const lessonReportOptions = schedule.flatMap((session) => (
-    session.closed ? [] : Object.entries(session.assignments || {}).map(([className, teacherName]) => ({
-      id: `${session.key}__${className}`,
-      sessionKey: session.key,
-      sessionLabel: session.label,
-      dateText: `${session.label}（土）`,
-      label: `${session.label} ${className}`,
-      className,
-      teacherName,
-      status: (() => {
-        const report = lessonReports[`${session.key}__${className}`]
-        if (!report) return '未入力'
-        return report.unit && report.content && report.handoff ? '完了' : '下書き'
-      })(),
-    }))
-  ))
+  const lessonReportOptions = buildLessonReportOptionsForMonth(year, month)
   const selectedLessonReportId = lessonReportOptions.some((item) => item.id === activeLessonReportId)
     ? activeLessonReportId
     : (lessonReportOptions[0]?.id ?? '')
@@ -2128,16 +2353,59 @@ export default function App() {
     handoff: '',
     ...(lessonReports[selectedLessonOption.id] ?? {}),
     } : null
-  const lessonReportGroups = schedule.filter((session) => !session.closed).map((session) => {
-    const items = lessonReportOptions.filter((option) => option.sessionKey === session.key)
+  const lessonReportGroups = [...new Map(lessonReportOptions.map((item) => [item.sessionKey, item.sessionLabel])).entries()].map(([sessionKey, label]) => {
+    const items = lessonReportOptions.filter((option) => option.sessionKey === sessionKey)
     const doneCount = items.filter((item) => item.status === '完了').length
-    return { sessionKey: session.key, label: session.label, items, doneCount }
+    return { sessionKey, label, items, doneCount }
   }).filter((group) => group.items.length > 0)
   const selectedLessonGroup = lessonReportGroups.find((group) => group.sessionKey === selectedLessonOption?.sessionKey) ?? lessonReportGroups[0]
+  const lessonReportMonthKeys = [...new Set([
+    monthKey,
+    ...Object.keys(lessonReportsByMonth ?? {}),
+    ...Object.keys(attendanceByMonth ?? {}),
+    ...Object.keys(sessionTypesByMonth ?? {}),
+    ...Object.keys(sessionClassesByMonth ?? {}),
+    ...Object.keys(sessionManualByMonth ?? {}),
+    ...Object.keys(lockedMonths ?? {}),
+  ])].filter((key) => /^\d{4}-\d{1,2}$/.test(key)).sort((a, b) => {
+    const [ay, am] = a.split('-').map(Number)
+    const [by, bm] = b.split('-').map(Number)
+    return (ay * 12 + am) - (by * 12 + bm)
+  })
+  const lessonReportTimeline = lessonReportMonthKeys.flatMap((key) => {
+    const [targetYear, targetMonth] = key.split('-').map(Number)
+    return buildLessonReportOptionsForMonth(targetYear, targetMonth)
+  }).sort((a, b) => a.dateTimestamp - b.dateTimestamp || a.className.localeCompare(b.className, 'ja'))
+  const selectedTimelineIndex = lessonReportTimeline.findIndex((item) => item.monthKey === monthKey && item.id === selectedLessonReportId)
+  const sameClassTimeline = selectedLessonOption
+    ? lessonReportTimeline.filter((item) => item.className === selectedLessonOption.className)
+    : []
+  const selectedSameClassIndex = sameClassTimeline.findIndex((item) => item.monthKey === monthKey && item.id === selectedLessonReportId)
+  const previousLessonOption = selectedSameClassIndex > 0
+    ? sameClassTimeline[selectedSameClassIndex - 1]
+    : (selectedTimelineIndex > 0 ? lessonReportTimeline[selectedTimelineIndex - 1] : null)
+  const nextLessonOption = selectedSameClassIndex >= 0 && selectedSameClassIndex < sameClassTimeline.length - 1
+    ? sameClassTimeline[selectedSameClassIndex + 1]
+    : (selectedTimelineIndex >= 0 && selectedTimelineIndex < lessonReportTimeline.length - 1 ? lessonReportTimeline[selectedTimelineIndex + 1] : null)
+  const previousLessonReferenceOption = selectedTimelineIndex > 0 && selectedLessonOption
+    ? [...lessonReportTimeline.slice(0, selectedTimelineIndex)].reverse().find((item) => (
+      item.className === selectedLessonOption.className && lessonReportsByMonth?.[item.monthKey]?.[item.id]
+    ))
+    : null
+  const previousLessonReference = previousLessonReferenceOption ? {
+    ...previousLessonReferenceOption,
+    ...(lessonReportsByMonth?.[previousLessonReferenceOption.monthKey]?.[previousLessonReferenceOption.id] ?? {}),
+  } : null
   const effectiveUiMode = uiMode === 'auto' ? (isMobileViewport ? 'mobile' : 'desktop') : uiMode
   const canUseView = (sections, id) => sections.some((item) => item.id === id && (!item.adminOnly || isAdmin))
   const currentDesktopView = canUseView(navSections, activeView) ? activeView : 'home'
+  const currentDesktopMainView = currentDesktopView === 'attendanceStats'
+    ? 'attendance'
+    : (currentDesktopView === 'sessions' ? 'schedule' : currentDesktopView)
   const currentMobileView = canUseView(mobileNavSections, activeView) ? activeView : 'home'
+  const currentMobileMainView = ['attendanceStats', 'collab', 'settings'].includes(currentMobileView)
+    ? 'mobileMore'
+    : currentMobileView
 
   function UiModeSwitch({ compact = false }) {
     return <ModeSwitch uiMode={uiMode} onChange={setUiMode} compact={compact} />
@@ -2187,12 +2455,29 @@ export default function App() {
             <span>{isAdmin ? '管理者' : '本人入力'}</span>
           </div>
           <div className={`cloud-status cloud-status-${cloudStatus}`}>
-            <strong>Cloud Sync</strong>
+            <strong>共有データ</strong>
             <span>{cloudMessage}</span>
           </div>
           {actions}
         </div>
       </header>
+    )
+  }
+
+  function ContextTabs({ items }) {
+    return (
+      <nav className="context-tabs" aria-label="関連画面">
+        {items.filter((item) => !item.adminOnly || isAdmin).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={activeView === item.id ? 'active' : ''}
+            onClick={() => setActiveView(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
     )
   }
 
@@ -2227,18 +2512,48 @@ export default function App() {
   }
 
   function ExportActions() {
-    if (!isAdmin) return null
     return (
       <div className="action-row">
-        <button type="button" className="ghost-btn" onClick={copyLineText}>LINE用テキスト</button>
-        <button type="button" className="ghost-btn" onClick={exportMonthTable}>月表を保存</button>
-        <button type="button" className="ghost-btn" onClick={exportWordTable}>Word表</button>
-        <button type="button" className="ghost-btn" onClick={exportHtmlTable}>HTML表</button>
-        <button type="button" className={isMonthLocked ? 'success-btn' : 'primary-btn'} onClick={isMonthLocked ? unlockMonth : finalizeMonth}>
+        <button type="button" className="primary-btn" onClick={openScheduleMailPanel}>担当表をメール送信</button>
+        {isAdmin ? <button type="button" className="ghost-btn" onClick={copyLineText}>LINE用テキスト</button> : null}
+        {isAdmin ? <button type="button" className="ghost-btn" onClick={exportMonthTable}>月表を保存</button> : null}
+        {isAdmin ? <button type="button" className="ghost-btn" onClick={exportWordTable}>Word表</button> : null}
+        {isAdmin ? <button type="button" className="ghost-btn" onClick={exportHtmlTable}>HTML表</button> : null}
+        {isAdmin ? <button type="button" className={isMonthLocked ? 'success-btn' : 'primary-btn'} onClick={isMonthLocked ? unlockMonth : finalizeMonth}>
           {isMonthLocked ? '確定済み' : '今月を確定'}
-        </button>
+        </button> : null}
         {exportMessage ? <span className="inline-message">{exportMessage}</span> : null}
       </div>
+    )
+  }
+
+  function ScheduleMailPanel() {
+    if (!identity || !mailPanelOpen) return null
+    const draft = scheduleMailDraft()
+    const recipientNames = teachers.filter((teacher) => teacher.name !== identity).map((teacher) => teacher.name)
+    return (
+      <section className="schedule-mail-panel" aria-label="担当表メール">
+        <div className="schedule-mail-head">
+          <div><span>担当表メール</span><strong>{year}年{month}月</strong></div>
+          <button type="button" className="icon-close-btn" title="閉じる" aria-label="閉じる" onClick={() => setMailPanelOpen(false)}>×</button>
+        </div>
+        <dl className="schedule-mail-meta">
+          <div><dt>送信元</dt><dd>Wawon管理用Gmail</dd></div>
+          <div><dt>連絡者</dt><dd>{identity}</dd></div>
+          <div><dt>配信先</dt><dd>{recipientNames.join('、')}（{recipientNames.length}名）</dd></div>
+          <div><dt>件名</dt><dd>{draft.subject}</dd></div>
+        </dl>
+        <p className="schedule-mail-format-note">見やすい表形式の本文とWordファイルを送ります。</p>
+        <textarea value={draft.body} readOnly rows={9} aria-label="メール本文" />
+        <div className="schedule-mail-actions">
+          <button type="button" className="ghost-btn" onClick={copyScheduleMailDraft}>下書きをコピー</button>
+          <button type="button" className="primary-btn" onClick={sendScheduleEmail} disabled={!isMonthLocked || ['sending', 'sent'].includes(mailDispatchStatus)}>
+            {mailDispatchStatus === 'sending' ? '送信中...' : mailDispatchStatus === 'sent' ? '送信済み' : 'この担当表を送信'}
+          </button>
+        </div>
+        {!isMonthLocked ? <p className="inline-message is-warning">月を確定すると送信できます。</p> : null}
+        {mailDispatchMessage ? <p className={`inline-message ${mailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{mailDispatchMessage}</p> : null}
+      </section>
     )
   }
 
@@ -2286,8 +2601,8 @@ export default function App() {
           <aside className="panel">
             <div className="panel-header">
               <div>
-                <h2>管理者アクション</h2>
-                <p>共有、保存、確定をここから行います。</p>
+                <h2>{isAdmin ? '管理者アクション' : '担当表の共有'}</h2>
+                <p>{isAdmin ? '共有、保存、確定をここから行います。' : '確定済みの担当表を、自分以外の先生へ送ります。'}</p>
               </div>
             </div>
             <ExportActions />
@@ -2329,6 +2644,7 @@ export default function App() {
     return (
       <section id="attendance" className="screen-view">
         <AppHeader title="出席入力" subtitle="先生ごとの出席状態を入力します。△は人数不足時だけ担当に入ります。" />
+        <ContextTabs items={[{ id: 'attendance', label: '出席入力' }, { id: 'attendanceStats', label: '出席統計' }]} />
         <div className="dashboard-grid">
           <section className="panel span-2">
             {isAdmin && (
@@ -2435,6 +2751,7 @@ export default function App() {
     return (
       <section id="attendanceStats" className="screen-view">
         <AppHeader title="出席統計" subtitle="各回の学習者・ボランティア人数を確認・入力します。" />
+        <ContextTabs items={[{ id: 'attendance', label: '出席入力' }, { id: 'attendanceStats', label: '出席統計' }]} />
         <div className="dashboard-grid">
           {schedule.filter((s) => !s.closed).map((session) => {
             const counts = getAttendanceCounts(session.key)
@@ -2488,6 +2805,8 @@ export default function App() {
           subtitle={isThisMonth ? `今日は${todayKey}` : '出席と担当可能クラスから自動で決まった結果です。'}
           actions={<ExportActions />}
         />
+        <ContextTabs items={[{ id: 'schedule', label: '担当表' }, { id: 'sessions', label: '各回設定', adminOnly: true }]} />
+        <ScheduleMailPanel />
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -2607,6 +2926,7 @@ export default function App() {
     return (
       <section id="sessions" className="screen-view">
         <AppHeader title="各回設定" subtitle="開催日ごとに種類、開講クラス、手動担当、特別連絡を設定します。" />
+        <ContextTabs items={[{ id: 'schedule', label: '担当表' }, { id: 'sessions', label: '各回設定', adminOnly: true }]} />
         <div className="dashboard-grid">
           <section className="panel span-2">
             <MonthControls />
@@ -2685,6 +3005,114 @@ export default function App() {
             </div>
           </aside>
         </div>
+      </section>
+    )
+  }
+
+  function formatBackupDate(value) {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? '日時不明' : date.toLocaleString('ja-JP')
+  }
+
+  function backupSummaryText(summary) {
+    if (!summary) return '内容を確認できません'
+    return `授業記録 ${summary.lessonReports}件・伝言 ${summary.bulletinPosts}件・確定表 ${summary.archivedSchedules}件`
+  }
+
+  function exportStateBackup() {
+    const envelope = createBackupEnvelope(state, '手動バックアップ')
+    const stamp = envelope.createdAt.replace(/[:.]/g, '-').slice(0, 19)
+    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json;charset=utf-8' })
+    downloadBlob(blob, `wawon-backup-${stamp}.json`)
+    setBackupHistory(saveLocalSnapshot(state, '手動バックアップ', { force: true }))
+    setBackupMessage('現在の共有データをJSONで保存しました。')
+  }
+
+  async function readBackupFile(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    try {
+      const candidate = parseBackupText(await file.text())
+      setRestoreCandidate({ ...candidate, fileName: file.name })
+      setBackupMessage('復元前の内容を確認してください。まだ共有データは変更していません。')
+    } catch (error) {
+      setRestoreCandidate(null)
+      setBackupMessage(error instanceof Error ? error.message : 'バックアップを読み取れませんでした。')
+    }
+  }
+
+  function restoreStateFromBackup(candidate) {
+    if (!isAdmin || !candidate?.state) return
+    const summary = candidate.summary ?? summarizeState(candidate.state)
+    const confirmed = window.confirm(
+      `${backupSummaryText(summary)}を復元します。\n復元後はSupabaseに保存され、ほかの端末にも反映されます。続けますか？`,
+    )
+    if (!confirmed) return
+
+    setBackupHistory(saveLocalSnapshot(state, '復元直前', { force: true }))
+    setState(mergeState(candidate.state))
+    setRestoreCandidate(null)
+    setBackupMessage('バックアップを復元しました。Supabaseへの保存を待っています。')
+  }
+
+  function DataSafetyPanel({ mobile = false }) {
+    const currentSummary = summarizeState(state)
+    const visibleHistory = backupHistory.slice(0, mobile ? 3 : 5)
+    return (
+      <section className={mobile ? 'mobile-card-list data-safety-panel' : 'panel data-safety-panel'}>
+        <div className="data-safety-header">
+          <div>
+            <h2>バックアップ・復元</h2>
+            <p>授業記録やメモをJSONで保存し、誤操作の前の状態へ戻せます。</p>
+          </div>
+          <span className={`data-safety-cloud data-safety-cloud-${cloudStatus}`}>{cloudStatus === 'ready' ? '共有済み' : cloudStatus === 'saving' ? '保存中' : cloudStatus === 'error' ? '要確認' : '接続中'}</span>
+        </div>
+
+        <div className="data-safety-current">
+          <strong>現在のデータ</strong>
+          <span>{backupSummaryText(currentSummary)}</span>
+        </div>
+
+        <div className="data-safety-actions">
+          <button type="button" className="primary-btn" onClick={exportStateBackup}>JSONバックアップ</button>
+          <button type="button" className="ghost-btn" onClick={() => backupFileRef.current?.click()}>復元ファイルを選ぶ</button>
+          <input ref={backupFileRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={readBackupFile} />
+        </div>
+
+        {restoreCandidate ? (
+          <div className="restore-preview" role="status">
+            <div>
+              <strong>復元プレビュー</strong>
+              <span>{restoreCandidate.fileName || restoreCandidate.source}</span>
+              <span>{backupSummaryText(restoreCandidate.summary)}</span>
+            </div>
+            <div className="data-safety-actions">
+              <button type="button" className="danger-btn" onClick={() => restoreStateFromBackup(restoreCandidate)}>この内容を復元</button>
+              <button type="button" className="ghost-btn" onClick={() => setRestoreCandidate(null)}>キャンセル</button>
+            </div>
+          </div>
+        ) : null}
+
+        {backupMessage ? <p className="data-safety-message" role="status">{backupMessage}</p> : null}
+
+        <details className="backup-history-details">
+          <summary>この端末の履歴 <strong>{backupHistory.length}件</strong></summary>
+          {visibleHistory.length === 0 ? <p className="empty-msg">まだ履歴はありません。</p> : (
+            <div className="backup-history-list">
+              {visibleHistory.map((snapshot) => (
+                <div key={snapshot.id} className="backup-history-row">
+                  <div>
+                    <strong>{snapshot.source}</strong>
+                    <span>{formatBackupDate(snapshot.createdAt)}</span>
+                    <span>{backupSummaryText(snapshot.summary)}</span>
+                  </div>
+                  <button type="button" className="ghost-btn" onClick={() => restoreStateFromBackup(snapshot)}>戻す</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </details>
       </section>
     )
   }
@@ -2785,6 +3213,7 @@ export default function App() {
             </div>
           </section>
         </div>
+        <DataSafetyPanel />
       </section>
     )
   }
@@ -2968,14 +3397,129 @@ export default function App() {
     )
   }
 
+  function openLessonReportOption(option) {
+    if (!option) return
+    setYear(option.calendarYear)
+    setMonth(option.calendarMonth)
+    setActiveLessonReportId(option.id)
+  }
+
+  function moveLessonReportMonth(delta) {
+    const targetDate = new Date(year, month - 1 + delta, 1)
+    const targetYear = targetDate.getFullYear()
+    const targetMonth = targetDate.getMonth() + 1
+    const targetOptions = buildLessonReportOptionsForMonth(targetYear, targetMonth)
+    const preferred = targetOptions.find((item) => item.className === selectedLessonOption?.className)
+      ?? targetOptions[0]
+    setYear(targetYear)
+    setMonth(targetMonth)
+    setActiveLessonReportId(preferred?.id ?? '')
+  }
+
+  function LessonReportTimelineControls({ compact = false }) {
+    return (
+      <div className={`lesson-timeline-toolbar ${compact ? 'compact' : ''}`}>
+        <div className="lesson-month-nav" aria-label="授業記録の月を移動">
+          <button type="button" className="ghost-btn" onClick={() => moveLessonReportMonth(-1)} aria-label="前の月">‹</button>
+          <strong>{year}年{month}月</strong>
+          <button type="button" className="ghost-btn" onClick={() => moveLessonReportMonth(1)} aria-label="次の月">›</button>
+        </div>
+        <div className="lesson-step-nav" aria-label="同じクラスの記録を移動">
+          <button type="button" className="ghost-btn" onClick={() => openLessonReportOption(previousLessonOption)} disabled={!previousLessonOption}>
+            <span>前回</span>
+            <small>{previousLessonOption ? `${previousLessonOption.sessionLabel} ${previousLessonOption.className}` : '記録なし'}</small>
+          </button>
+          <button type="button" className="ghost-btn" onClick={() => openLessonReportOption(nextLessonOption)} disabled={!nextLessonOption}>
+            <span>次回</span>
+            <small>{nextLessonOption ? `${nextLessonOption.sessionLabel} ${nextLessonOption.className}` : '記録なし'}</small>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  function LessonReportReference({ compact = false }) {
+    if (!previousLessonReference) {
+      return (
+        <section className={`lesson-reference ${compact ? 'compact' : ''}`}>
+          <div className="lesson-reference-head">
+            <div><span>前回の同じクラス</span><strong>保存済みの記録はありません</strong></div>
+          </div>
+        </section>
+      )
+    }
+    return (
+      <section className={`lesson-reference ${compact ? 'compact' : ''}`}>
+        <div className="lesson-reference-head">
+          <div>
+            <span>前回の同じクラス</span>
+            <strong>{previousLessonReference.sessionLabel} {previousLessonReference.className}</strong>
+          </div>
+          <button type="button" className="ghost-btn" onClick={() => openLessonReportOption(previousLessonReferenceOption)}>開く</button>
+        </div>
+        <dl>
+          <div><dt>単元</dt><dd>{previousLessonReference.unit || '未入力'}</dd></div>
+          <div><dt>授業内容</dt><dd>{previousLessonReference.content || '未入力'}</dd></div>
+          <div><dt>申し送り</dt><dd>{previousLessonReference.handoff || '未入力'}</dd></div>
+        </dl>
+      </section>
+    )
+  }
+
+  function LessonReportMailDialog({ report }) {
+    if (!lessonMailPanelOpen || !report) return null
+    const draft = lessonReportMailDraft(report)
+    const recipientNames = teachers.filter((teacher) => teacher.name !== identity).map((teacher) => teacher.name)
+    const reportComplete = report.status === '完了' && !!report.updatedAt
+    const senderMatches = report.teacherName === identity
+    const canSend = reportComplete && senderMatches && cloudStatus === 'ready' && lessonMailDispatchStatus !== 'sent'
+    return (
+      <div className="lesson-mail-backdrop" role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget && lessonMailDispatchStatus !== 'sending') setLessonMailPanelOpen(false)
+      }}>
+        <section className="lesson-mail-dialog" role="dialog" aria-modal="true" aria-labelledby="lesson-mail-title">
+          <div className="schedule-mail-head">
+            <div><span>授業報告メール</span><strong id="lesson-mail-title">送信内容を確認</strong></div>
+            <button type="button" className="icon-close-btn" title="閉じる" aria-label="閉じる" onClick={() => setLessonMailPanelOpen(false)} disabled={lessonMailDispatchStatus === 'sending'}>×</button>
+          </div>
+          <dl className="schedule-mail-meta">
+            <div><dt>授業</dt><dd>{draft.mailDateText}　{report.className}クラス</dd></div>
+            <div><dt>送信元</dt><dd>Wawon管理用Gmail</dd></div>
+            <div><dt>担当者</dt><dd>{identity}</dd></div>
+            <div><dt>配信先</dt><dd>{recipientNames.join('、')}（{recipientNames.length}名）</dd></div>
+            <div><dt>件名</dt><dd>{draft.subject}</dd></div>
+          </dl>
+          <div className="lesson-mail-attachment">
+            <span>Word添付</span>
+            <strong>{draft.attachmentName}</strong>
+          </div>
+          <pre className="lesson-mail-body-preview">{draft.body}</pre>
+          <p className="schedule-mail-format-note">同じ保存内容は重複送信されません。記録を変更して保存すると、修正版を再送できます。</p>
+          {!senderMatches ? <p className="inline-message is-warning">担当者「{report.teacherName}」本人の名前で開いている時だけ送信できます。</p> : null}
+          {!reportComplete ? <p className="inline-message is-warning">単元・授業内容・申し送りを入力し、保存が完了すると送信できます。</p> : null}
+          {cloudStatus !== 'ready' ? <p className="inline-message is-warning">共有データを保存しています。完了までお待ちください。</p> : null}
+          {lessonMailDispatchMessage ? <p className={`inline-message ${lessonMailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{lessonMailDispatchMessage}</p> : null}
+          <div className="schedule-mail-actions">
+            <button type="button" className="ghost-btn" onClick={() => setLessonMailPanelOpen(false)} disabled={lessonMailDispatchStatus === 'sending'}>戻る</button>
+            <button type="button" className="primary-btn" onClick={() => sendLessonReportEmail(report)} disabled={!canSend || lessonMailDispatchStatus === 'sending'}>
+              {lessonMailDispatchStatus === 'sending' ? '送信中...' : lessonMailDispatchStatus === 'sent' ? '送信済み' : 'この内容で送信'}
+            </button>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   function LessonReportsView() {
     return (
       <section id="lessonReports" className="screen-view">
         <AppHeader
           title="授業記録"
           subtitle="授業後の報告書を作成して、Word形式で保存します。"
-          actions={<div className="action-row"><button type="button" className="primary-btn" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button><button type="button" className="ghost-btn" disabled={!selectedLessonReport}>保存済み</button></div>}
+          actions={<div className="action-row"><button type="button" className="primary-btn" onClick={openLessonReportMail} disabled={!selectedLessonReport}>メール送信</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button><button type="button" className="ghost-btn" disabled={!selectedLessonReport}>保存済み</button></div>}
         />
+        {LessonReportMailDialog({ report: selectedLessonReport })}
+        {LessonReportTimelineControls({ compact: false })}
         <div className="lesson-layout">
           <main>
             <div className="lesson-selector-row">
@@ -2995,6 +3539,7 @@ export default function App() {
                 </select>
               </label>
             </div>
+            {LessonReportReference({ compact: false })}
             {LessonReportFields({ report: selectedLessonReport })}
           </main>
           <aside className="lesson-side">
@@ -3125,6 +3670,65 @@ export default function App() {
     return { year: targetYear, month: targetMonth, schedule: targetSchedule, attendance: targetAttendance }
   }
 
+  function buildLessonReportOptionsForMonth(targetYear, targetMonth) {
+    const targetMonthKey = `${targetYear}-${targetMonth}`
+    const target = buildScheduleForMonth(targetYear, targetMonth)
+    const reports = lessonReportsByMonth?.[targetMonthKey] ?? {}
+    const options = new Map()
+
+    target.schedule.forEach((session) => {
+      if (session.closed) return
+      Object.entries(session.assignments || {}).forEach(([className, teacherName]) => {
+        const id = `${session.key}__${className}`
+        const report = reports[id]
+        const sessionDate = dateForSession(session, targetYear, targetMonth)
+        options.set(id, {
+          id,
+          monthKey: targetMonthKey,
+          calendarYear: targetYear,
+          calendarMonth: targetMonth,
+          sessionKey: session.key,
+          sessionLabel: session.label,
+          dateText: `${session.label}（土）`,
+          dateTimestamp: sessionDate?.getTime() ?? 0,
+          label: `${session.label} ${className}`,
+          className,
+          teacherName,
+          status: !report ? '未入力' : (report.unit && report.content && report.handoff ? '完了' : '下書き'),
+        })
+      })
+    })
+
+    Object.entries(reports).forEach(([id, report]) => {
+      if (options.has(id)) return
+      const separatorIndex = id.indexOf('__')
+      const idSessionKey = separatorIndex >= 0 ? id.slice(0, separatorIndex) : ''
+      const idClassName = separatorIndex >= 0 ? id.slice(separatorIndex + 2) : ''
+      const sessionKey = report.sessionKey || idSessionKey || report.dateText?.replace(/（.*$/, '') || ''
+      const sessionLabel = report.sessionLabel || sessionKey
+      const className = report.className || idClassName || 'クラス未設定'
+      const sessionDate = dateForSession({ key: sessionKey }, targetYear, targetMonth)
+      options.set(id, {
+        id,
+        monthKey: targetMonthKey,
+        calendarYear: targetYear,
+        calendarMonth: targetMonth,
+        sessionKey,
+        sessionLabel,
+        dateText: report.dateText || `${sessionLabel}（土）`,
+        dateTimestamp: sessionDate?.getTime() ?? 0,
+        label: report.label || `${sessionLabel} ${className}`,
+        className,
+        teacherName: report.teacherName || '担当未設定',
+        status: report.unit && report.content && report.handoff ? '完了' : '下書き',
+      })
+    })
+
+    return [...options.values()].sort((a, b) => (
+      a.dateTimestamp - b.dateTimestamp || a.className.localeCompare(b.className, 'ja')
+    ))
+  }
+
   function findNextSession() {
     const startYear = todayDate.getFullYear()
     const startMonth = todayDate.getMonth() + 1
@@ -3143,7 +3747,7 @@ export default function App() {
     return schedule.find((session) => !session.closed) ?? schedule[0]
   }
 
-  function MobileHeader({ title, subtitle }) {
+  function MobileHeader({ title, subtitle, showMonth = false, showDisplay = false }) {
     return (
       <header className="mobile-header">
         <div className="mobile-title-row">
@@ -3158,11 +3762,15 @@ export default function App() {
           <strong>{identity}</strong>
           <span>{isAdmin ? '管理者' : '本人'}</span>
         </button>
-        <UiModeSwitch compact />
-        <BrandIconPicker value={activeBrandIconId} onChange={setBrandIcon} compact />
-        <MobileMonthControls />
+        {showDisplay ? <UiModeSwitch compact /> : null}
+        {showDisplay ? <BrandIconPicker value={activeBrandIconId} onChange={setBrandIcon} compact /> : null}
+        {showMonth ? <MobileMonthControls /> : null}
       </header>
     )
+  }
+
+  function MobileMoreBack() {
+    return <button type="button" className="mobile-subpage-back" onClick={() => setActiveView('mobileMore')}>‹ その他へ戻る</button>
   }
 
   function MobileHomeView() {
@@ -3177,7 +3785,7 @@ export default function App() {
       : 0
     return (
       <section className="mobile-screen">
-        <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" />
+        <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" showMonth showDisplay />
         <div className="mobile-metrics">
           <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${sessionTypeLabel(nextSession)}` : 'なし'}</strong></div>
           <div><span>出席入力</span><strong>{mobileAttendanceDoneCount}/{teachers.length}</strong></div>
@@ -3219,7 +3827,7 @@ export default function App() {
   function MobileAttendanceView() {
     return (
       <section className="mobile-screen">
-        <MobileHeader title="出席入力" subtitle={isAdmin ? '先生を切り替えて入力できます' : '自分の出席だけ入力できます'} />
+        <MobileHeader title="出席入力" subtitle={isAdmin ? '先生を切り替えて入力できます' : '自分の出席だけ入力できます'} showMonth />
         {isAdmin ? (
           <div className="mobile-chip-scroll">
             {teachers.map((teacher) => (
@@ -3269,7 +3877,8 @@ export default function App() {
   function MobileAttendanceStatsView() {
     return (
       <section className="mobile-screen">
-        <MobileHeader title="出席統計" subtitle="各回の学習者・ボランティア人数を確認できます" />
+        <MobileHeader title="出席統計" subtitle="各回の学習者・ボランティア人数を確認できます" showMonth />
+        <MobileMoreBack />
         <div className="mobile-card-list">
           {schedule.map((session) => {
             const counts = getAttendanceCounts(session.key)
@@ -3325,11 +3934,13 @@ export default function App() {
   function MobileScheduleView() {
     return (
       <section className="mobile-screen">
-        <MobileHeader title="担当表" subtitle="担当なしの先生も状態を表示します" />
+        <MobileHeader title="担当表" subtitle="担当なしの先生も状態を表示します" showMonth />
         <div className="mobile-quick-actions">
+          <button type="button" className="mobile-primary-action" onClick={openScheduleMailPanel}>担当表送信</button>
           <button type="button" onClick={copyLineText}>LINEコピー</button>
           <button type="button" onClick={exportHtmlTable}>HTML出力</button>
         </div>
+        <ScheduleMailPanel />
         <div className="mobile-card-list">
           {schedule.map((session) => (
             <article key={session.key} className={`mobile-schedule-card ${session.closed ? 'is-disabled' : ''}`}>
@@ -3383,10 +3994,12 @@ export default function App() {
       { id: 'settings', title: '先生・クラス設定', desc: '担当可能クラスと既定出欠' },
       { id: 'statuses', title: '状態マスタ', desc: '○ △ △・会議○ × 例会のみ' },
       { id: 'archive', title: 'アーカイブ', desc: '確定済み担当表' },
+      { id: 'backup', title: 'バックアップ', desc: '共有データの保存と復元' },
     ]
     return (
       <section className="mobile-screen">
-        <MobileHeader title="管理" subtitle="各回設定と先生設定の入口" />
+        <MobileHeader title="管理" subtitle="各回設定と先生設定の入口" showMonth />
+        <MobileMoreBack />
         <div className="mobile-admin-grid">
           {adminPanels.map((panel) => (
             <button key={panel.id} type="button" className={mobileAdminPanel === panel.id ? 'active' : ''} onClick={() => setMobileAdminPanel(panel.id)}>
@@ -3490,6 +4103,7 @@ export default function App() {
             ))}
           </section>
         ) : null}
+        {mobileAdminPanel === 'backup' ? <DataSafetyPanel mobile /> : null}
         <section className="mobile-card-list">
           <h2>担当可能クラス</h2>
           <div className="mobile-capability-preview">
@@ -3508,7 +4122,8 @@ export default function App() {
   function MobileMemoView() {
     return (
       <section className="mobile-screen">
-        <MobileHeader title="メモ・連絡板" subtitle="連絡、個人メモ、例会メモ" />
+        <MobileHeader title="メモ・連絡板" subtitle="連絡、個人メモ、例会メモ" showMonth />
+        <MobileMoreBack />
         <section className="mobile-card-list">
           <div className="mobile-section-title">
             <h2>連絡板</h2>
@@ -3577,15 +4192,50 @@ export default function App() {
     )
   }
 
+  function MobileMoreView() {
+    const items = [
+      { id: 'attendanceStats', title: '出席統計', desc: '学習者・ボランティア人数を確認' },
+      { id: 'collab', title: '伝言板・メモ', desc: '全員連絡、個人メモ、例会記録' },
+      ...(isAdmin ? [{ id: 'settings', title: '管理設定', desc: '各回、先生、クラス、バックアップ' }] : []),
+    ]
+    return (
+      <section className="mobile-screen">
+        <MobileHeader title="その他" subtitle="統計、連絡、設定" />
+        <nav className="mobile-more-list" aria-label="その他の機能">
+          {items.map((item) => (
+            <button key={item.id} type="button" onClick={() => setActiveView(item.id)}>
+              <span><strong>{item.title}</strong><small>{item.desc}</small></span>
+              <b aria-hidden="true">›</b>
+            </button>
+          ))}
+        </nav>
+        <section className="mobile-display-settings">
+          <div className="mobile-section-title"><h2>表示設定</h2></div>
+          <div className="sidebar-theme">
+            {[
+              { id: 'clay', label: '明るい' },
+              { id: 'night', label: '夜' },
+              { id: 'sakura', label: 'さくら' },
+            ].map((item) => (
+              <button key={item.id} type="button" className={`theme-pill${theme === item.id ? ' theme-pill-active' : ''}`} onClick={() => setTheme(item.id)}>{item.label}</button>
+            ))}
+          </div>
+          <UiModeSwitch compact />
+          <BrandIconPicker value={activeBrandIconId} onChange={setBrandIcon} compact />
+          <button type="button" className="mobile-switch-user" onClick={switchIdentity}>利用者を選び直す</button>
+        </section>
+      </section>
+    )
+  }
+
   function MobileLessonReportsView() {
     return (
       <section className="mobile-screen">
         <MobileHeader title="授業記録" subtitle="授業後の報告書" />
+        {LessonReportTimelineControls({ compact: true })}
         <section className="mobile-card-list">
           <div className="mobile-section-title">
             <h2>記録を選ぶ</h2>
-            <button type="button" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button>
-            <button type="button" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button>
           </div>
           <select value={selectedLessonGroup?.sessionKey ?? ''} onChange={(e) => {
             const group = lessonReportGroups.find((item) => item.sessionKey === e.target.value)
@@ -3606,16 +4256,22 @@ export default function App() {
           </div>
           {selectedLessonReport ? <span className={`mobile-status-pill ${selectedLessonReport.updatedAt ? 'yes' : 'maybe'}`}>{selectedLessonReport.updatedAt ? '保存済み' : '未入力'}</span> : null}
         </section>
+        <details className="mobile-lesson-reference">
+          <summary>前回の同じクラスを参照</summary>
+          {LessonReportReference({ compact: true })}
+        </details>
         {LessonReportFields({ report: selectedLessonReport, compact: true })}
         <section className="mobile-card-list">
           <h2>Wordプレビュー</h2>
           {LessonReportPreview({ report: selectedLessonReport })}
         </section>
         <div className="mobile-lesson-actions">
+          <button type="button" onClick={openLessonReportMail} disabled={!selectedLessonReport}>メール送信</button>
           <button type="button" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button>
           <button type="button" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button>
           <button type="button" disabled={!selectedLessonReport}>保存済み</button>
         </div>
+        {LessonReportMailDialog({ report: selectedLessonReport })}
       </section>
     )
   }
@@ -3635,9 +4291,10 @@ export default function App() {
     attendance: MobileAttendanceView(),
     attendanceStats: MobileAttendanceStatsView(),
     schedule: MobileScheduleView(),
-    mobileAdmin: MobileAdminView(),
-    mobileMemo: MobileMemoView(),
-    mobileLessonReports: MobileLessonReportsView(),
+    settings: MobileAdminView(),
+    collab: MobileMemoView(),
+    lessonReports: MobileLessonReportsView(),
+    mobileMore: MobileMoreView(),
   }
 
   return (
@@ -3651,11 +4308,11 @@ export default function App() {
           </div>
         </div>
         <nav className="sidebar-nav">
-          {navSections.filter((s) => !s.adminOnly || isAdmin).map((section, index) => (
+          {navSections.filter((s) => !s.hidden && (!s.adminOnly || isAdmin)).map((section, index) => (
             <button
               key={section.id}
               type="button"
-              className={`sidebar-link ${currentDesktopView === section.id ? 'sidebar-link-active' : ''}`}
+              className={`sidebar-link ${currentDesktopMainView === section.id ? 'sidebar-link-active' : ''}`}
               onClick={() => setActiveView(section.id)}
             >
               <span className="sidebar-index">{String(index + 1).padStart(2, '0')}</span>
@@ -3701,11 +4358,11 @@ export default function App() {
         )}
         {mobileViews[currentMobileView]}
         <nav className="mobile-bottom-nav" aria-label="モバイルナビゲーション">
-          {mobileNavSections.filter((s) => !s.adminOnly || isAdmin).map((section) => (
+          {mobileNavSections.filter((s) => !s.hidden && (!s.adminOnly || isAdmin)).map((section) => (
             <button
               key={section.id}
               type="button"
-              className={currentMobileView === section.id ? 'active' : ''}
+              className={currentMobileMainView === section.id ? 'active' : ''}
               onClick={() => setActiveView(section.id)}
             >
               <span>{section.shortLabel}</span>
