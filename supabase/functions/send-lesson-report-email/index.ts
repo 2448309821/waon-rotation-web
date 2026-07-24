@@ -13,7 +13,7 @@ function corsHeaders(request: Request) {
   const origin = request.headers.get('origin') || ''
   return {
     'Access-Control-Allow-Origin': allowedOrigins.has(origin) ? origin : 'https://2448309821.github.io',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-wawon-mail-key',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Content-Type': 'application/json; charset=utf-8',
     'Vary': 'Origin',
@@ -37,15 +37,6 @@ async function sha256(value: string) {
   const bytes = new TextEncoder().encode(value)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
-function safeEqual(left: string, right: string) {
-  const leftBytes = new TextEncoder().encode(left)
-  const rightBytes = new TextEncoder().encode(right)
-  let mismatch = leftBytes.length ^ rightBytes.length
-  const length = Math.max(leftBytes.length, rightBytes.length)
-  for (let index = 0; index < length; index += 1) mismatch |= (leftBytes[index] || 0) ^ (rightBytes[index] || 0)
-  return mismatch === 0
 }
 
 function parseRecipientMap(value: string) {
@@ -89,13 +80,10 @@ Deno.serve(async (request) => {
   const webhookUrl = Deno.env.get('MAIL_WEBHOOK_URL') || ''
   const webhookToken = Deno.env.get('MAIL_WEBHOOK_TOKEN') || ''
   const recipientMap = parseRecipientMap(Deno.env.get('SCHEDULE_MAIL_RECIPIENTS_JSON') || '')
-  const triggerKey = Deno.env.get('SCHEDULE_MAIL_TRIGGER_KEY') || ''
-  const suppliedTriggerKey = request.headers.get('x-wawon-mail-key') || ''
   if (!supabaseUrl || !serviceRoleKey) return response(request, { sent: false, error: 'server_storage_not_configured' }, 503)
-  if (!isGoogleAppsScriptUrl(webhookUrl) || !webhookToken || !recipientMap || triggerKey.length < 16) {
+  if (!isGoogleAppsScriptUrl(webhookUrl) || !webhookToken || !recipientMap) {
     return response(request, { sent: false, error: 'mail_backend_not_configured' }, 503)
   }
-  if (!safeEqual(suppliedTriggerKey, triggerKey)) return response(request, { sent: false, error: 'invalid_trigger_key' }, 401)
 
   const senderEmail = recipientMap[senderName]
   const recipientEmails = Object.entries(recipientMap).filter(([name]) => name !== senderName).map(([, email]) => email)
