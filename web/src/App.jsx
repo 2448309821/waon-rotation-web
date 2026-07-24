@@ -1452,28 +1452,12 @@ export default function App() {
 
   async function sendScheduleEmail() {
     if (!identity || !isMonthLocked) return
-    let triggerKey = ''
-    try {
-      triggerKey = sessionStorage.getItem('wawon-schedule-mail-key') || ''
-    } catch {
-      // Continue with a one-time prompt when session storage is unavailable.
-    }
-    if (!triggerKey) {
-      triggerKey = window.prompt('メール送信用キーを入力してください。')?.trim() || ''
-      if (!triggerKey) return
-      try {
-        sessionStorage.setItem('wawon-schedule-mail-key', triggerKey)
-      } catch {
-        // The key remains in memory only for this send.
-      }
-    }
     const recipientCount = Math.max(0, teachers.length - 1)
     if (!window.confirm(`${identity}さん以外の${recipientCount}名へ、${year}年${month}月の確定担当表を送信しますか？`)) return
     setMailDispatchStatus('sending')
     setMailDispatchMessage('送信しています...')
     const { data, error } = await supabase.functions.invoke('send-schedule-email', {
       body: { monthKey, senderName: identity },
-      headers: { 'x-wawon-mail-key': triggerKey },
     })
     if (error || !data?.sent) {
       let responseError = null
@@ -1483,19 +1467,10 @@ export default function App() {
         responseError = null
       }
       const reason = data?.error || responseError?.error || error?.message || 'mail_send_failed'
-      if (reason === 'invalid_trigger_key') {
-        try {
-          sessionStorage.removeItem('wawon-schedule-mail-key')
-        } catch {
-          // Ignore storage failures.
-        }
-      }
       setMailDispatchStatus('error')
       setMailDispatchMessage(reason === 'already_sent'
         ? 'この月の担当表はすでに送信済みです。'
-        : reason === 'invalid_trigger_key'
-          ? 'メール送信用キーが正しくありません。次回の送信時にもう一度入力してください。'
-          : reason === 'invalid_sender'
+        : reason === 'invalid_sender'
             ? '選択した先生の連絡先設定がありません。管理者へ確認してください。'
             : 'メール送信機能はまだサーバーに設定されていません。下書きコピーを利用できます。')
       return
@@ -1550,21 +1525,6 @@ export default function App() {
       setLessonMailDispatchMessage('共有データの保存完了後に送信してください。')
       return
     }
-    let triggerKey = ''
-    try {
-      triggerKey = sessionStorage.getItem('wawon-schedule-mail-key') || ''
-    } catch {
-      // Continue with a one-time prompt when session storage is unavailable.
-    }
-    if (!triggerKey) {
-      triggerKey = window.prompt('メール送信用キーを入力してください。')?.trim() || ''
-      if (!triggerKey) return
-      try {
-        sessionStorage.setItem('wawon-schedule-mail-key', triggerKey)
-      } catch {
-        // The key remains in memory only for this send.
-      }
-    }
     const recipientCount = Math.max(0, teachers.length - 1)
     const draft = lessonReportMailDraft(report)
     if (!window.confirm(`${identity}さん以外の${recipientCount}名へ、${draft.mailDateText}の${report.className}クラス授業報告を送信しますか？`)) return
@@ -1572,7 +1532,6 @@ export default function App() {
     setLessonMailDispatchMessage('授業報告を送信しています...')
     const { data, error } = await supabase.functions.invoke('send-lesson-report-email', {
       body: { monthKey: report.monthKey || monthKey, reportId: report.id, senderName: identity },
-      headers: { 'x-wawon-mail-key': triggerKey },
     })
     if (error || !data?.sent) {
       let responseError = null
@@ -1582,17 +1541,9 @@ export default function App() {
         responseError = null
       }
       const reason = data?.error || responseError?.error || error?.message || 'mail_send_failed'
-      if (reason === 'invalid_trigger_key') {
-        try {
-          sessionStorage.removeItem('wawon-schedule-mail-key')
-        } catch {
-          // Ignore storage failures.
-        }
-      }
       const messages = {
         already_sent: 'この保存内容はすでに送信済みです。記録を変更して保存すると再送できます。',
         send_in_progress: 'この授業報告は現在送信中です。少し待ってから確認してください。',
-        invalid_trigger_key: 'メール送信用キーが正しくありません。次回の送信時にもう一度入力してください。',
         invalid_sender: '選択した先生の連絡先設定がありません。管理者へ確認してください。',
         sender_not_report_teacher: '担当者本人の名前で開いている時だけ送信できます。',
         report_not_saved: '授業記録が共有データに保存されていません。',

@@ -29,12 +29,11 @@ Apps Scriptを更新した場合は、既存のWebアプリを「新しいバー
 supabase secrets set MAIL_WEBHOOK_URL="GAS Web App URL"
 supabase secrets set MAIL_WEBHOOK_TOKEN="GAS token"
 supabase secrets set SCHEDULE_MAIL_RECIPIENTS_JSON='{"岡崎":"先生1@example.com","岡本":"先生2@example.com","柴田":"先生3@example.com","今村":"先生4@example.com","門馬":"先生5@example.com","蔦尾":"先生6@example.com","相良":"先生7@example.com","裴":"先生8@example.com"}'
-supabase secrets set SCHEDULE_MAIL_TRIGGER_KEY="16文字以上の管理キー"
 supabase functions deploy send-schedule-email
 supabase functions deploy send-lesson-report-email
 ```
 
-授業報告を送れるのは、その記録の担当者本人を選択している時だけです。単元・授業内容・申し送りを入力し、共有データへの保存が完了してから「メール送信」を押します。送信用キーはそのタブの`sessionStorage`だけに保持され、タブを閉じると残りません。
+授業報告を送れるのは、その記録の担当者本人を選択している時だけです。単元・授業内容・申し送りを入力し、共有データへの保存が完了してから「メール送信」を押します。送信に必要なGASトークンと宛先表はSupabase Edge Functionのsecretに保持し、ブラウザでは入力させません。
 
 ## 安全条件
 

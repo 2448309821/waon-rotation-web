@@ -127,6 +127,13 @@
 - Result: 誰が画面を操作しても、送信元と返信先はGASをデプロイした同じ管理用Gmailになる。本人を除く配信規則と本文中の担当者表示は維持する。
 - Next: GASを先に新しいバージョンで再デプロイし、その後Edge Functionを更新する。
 
+### 2026-07-24 - 送信用キー入力を廃止
+- Change: 担当表メールと授業報告メールの送信時に、ブラウザで「メール送信用キー」を入力させる処理を削除した。Edge Function側も`x-wawon-mail-key`検証と`SCHEDULE_MAIL_TRIGGER_KEY`必須条件を外した。
+- Reason: ユーザーが期待しているのは「送信ボタンだけで管理用Gmail/GASから送る」操作であり、手入力キーは運用上わかりにくかったため。
+- Evidence: 送信に必要なGAS URL、GAS token、宛先表はSupabase Edge Functionのsecret側に残し、ブラウザには表示しない。
+- Result: 送信前には通常の確認ダイアログだけを出し、メール用のT/key入力は不要になった。
+- Next: Vite build、両Edge Functionのbundle、GAS構文チェックを再実行し、本番へ反映する。
+
 ## Verification
 | Check | Result | Notes |
 | --- | --- | --- |
@@ -149,6 +156,7 @@
 | サーバー版授業報告Word | pass | 7/11さくらの実データから11,388 bytes、Meiryo 12pt、5行3列、1ページのWordを生成し、Edge Function bundleも成功。 |
 | 担当表メール送信ボタン | pass | デスクトップ/スマホの専用ラベルと主操作スタイルをbuildで確認。ローカルURLはHTTP 200。 |
 | 管理用Gmailへの送信元統一 | pass | 個別Reply-Toを廃止し、GAS表示名を固定。Vite、両Edge Function、GAS構文、ローカルHTTPを確認。 |
+| 送信用キー入力廃止 | pass | Vite build、両Edge Function bundle、GAS構文チェックに成功。ブラウザの`prompt`と`x-wawon-mail-key`参照は削除済み。 |
 
 ## Known Issues
 - Supabase側にはまだサーバー版履歴がない。
