@@ -25,6 +25,10 @@ import {
   saveLocalSnapshot,
   summarizeState,
 } from './stateBackup'
+import {
+  formatLessonContentLines,
+  formatLessonHandoffLines,
+} from './lessonReportFormat'
 
 function AutoTextarea({ value, onChange, rows = 3, style, ...props }) {
   const ref = useRef(null)
@@ -517,19 +521,16 @@ function textToWordParagraphs(value, options = {}) {
   return lines.map((line) => wordParagraph(line, options)).join('')
 }
 
-function contentToNumberedWordParagraphs(value) {
-  const lines = String(value ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+function contentToNumberedWordParagraphs(value, { line = 240 } = {}) {
+  const lines = formatLessonContentLines(value)
   if (lines.length === 0) return wordParagraph('', { bold: true, size: 24 })
-  return lines.map((line, idx) => {
-    const normalized = line.replace(/^\d+[.)．、]\s*/, '').replace(/\*\*/g, '')
-    return wordParagraph(`${idx + 1}.  ${normalized}`, { bold: true, size: 24, after: 0, line: 240 })
-  }).join('')
+  return lines.map((item) => wordParagraph(item.display, { bold: true, size: 24, after: 0, line })).join('')
 }
 
-function handoffToBulletWordParagraphs(value) {
-  const lines = String(value ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-  if (lines.length === 0) return wordParagraph('● ', { bold: true, size: 24 })
-  return lines.map((line) => wordParagraph(`●  ${line.replace(/^●\s*/, '').replace(/\*\*/g, '')}`, { bold: true, size: 24, after: 0, line: 240 })).join('')
+function handoffToBulletWordParagraphs(value, { line = 240 } = {}) {
+  const lines = formatLessonHandoffLines(value)
+  if (lines.length === 0) return wordParagraph('', { bold: true, size: 24 })
+  return lines.map((item) => wordParagraph(item.display, { bold: true, size: 24, after: 0, line })).join('')
 }
 
 const LESSON_REPORT_PAGE = {
@@ -562,7 +563,8 @@ function wordCell(content, { span = 1, width = LESSON_REPORT_WORD.tableWidth, vM
 }
 
 function wordRow(cells, height) {
-  return `<w:tr><w:trPr><w:trHeight w:val="${height}" w:hRule="atLeast"/></w:trPr>${cells}</w:tr>`
+  const rowProperties = height ? `<w:trPr><w:trHeight w:val="${height}" w:hRule="atLeast"/></w:trPr>` : ''
+  return `<w:tr>${rowProperties}${cells}</w:tr>`
 }
 
 function crc32(bytes) {
@@ -657,14 +659,29 @@ function lessonAttendeeCountValue(report) {
   return countLessonAttendees(report?.attendees)
 }
 
+function lessonReportNeedsCompactWordLayout(report) {
+  const fields = [report?.unit, report?.content, report?.handoff].map((value) => String(value ?? ''))
+  const characterCount = Array.from(fields.join('').replace(/\s/g, '')).length
+  const lineCount = fields.reduce((total, value) => total + value.split(/\r?\n/).filter((line) => line.trim()).length, 0)
+  return characterCount > 560 || lineCount > 12
+}
+
 function buildLessonReportDocx(report) {
   const attendeeCount = lessonAttendeeCountValue(report)
-  const { tableWidth, colWidths, rowHeights, topMargin, rightMargin, bottomMargin, leftMargin } = LESSON_REPORT_WORD
-  const unitParagraphs = textToWordParagraphs(`単元　${report.unit || ''}`, { size: 24, after: 0, line: 240 })
-  const contentParagraphs = contentToNumberedWordParagraphs(report.content)
-  const handoffParagraphs = `${wordParagraph('申し送り及び感想：', { bold: true, size: 24, after: 0, line: 240 })}${handoffToBulletWordParagraphs(report.handoff)}`
+  const compactLayout = lessonReportNeedsCompactWordLayout(report)
+  const { tableWidth, colWidths, rightMargin, leftMargin } = LESSON_REPORT_WORD
+  const rowHeights = compactLayout
+    ? [6.6, 6.9, 0, 0, 0].map((height) => height ? mmToDxa(height) : 0)
+    : LESSON_REPORT_WORD.rowHeights
+  const topMargin = compactLayout ? mmToDxa(15) : LESSON_REPORT_WORD.topMargin
+  const bottomMargin = compactLayout ? mmToDxa(12) : LESSON_REPORT_WORD.bottomMargin
+  const paragraphLine = compactLayout ? 220 : 240
+  const contentPadding = compactLayout ? 35 : 55
+  const unitParagraphs = textToWordParagraphs(`単元　${report.unit || ''}`, { size: 24, after: 0, line: paragraphLine })
+  const contentParagraphs = contentToNumberedWordParagraphs(report.content, { line: paragraphLine })
+  const handoffParagraphs = `${wordParagraph('申し送り及び感想：', { bold: true, size: 24, after: 0, line: paragraphLine })}${handoffToBulletWordParagraphs(report.handoff, { line: paragraphLine })}`
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <w:body>
 <w:tbl>
 <w:tblPr><w:tblW w:w="${tableWidth}" w:type="dxa"/><w:jc w:val="left"/><w:tblLayout w:type="fixed"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="555555"/><w:left w:val="single" w:sz="4" w:color="555555"/><w:bottom w:val="single" w:sz="4" w:color="555555"/><w:right w:val="single" w:sz="4" w:color="555555"/><w:insideH w:val="single" w:sz="4" w:color="555555"/><w:insideV w:val="single" w:sz="4" w:color="555555"/></w:tblBorders></w:tblPr>
@@ -675,25 +692,28 @@ ${wordCell(wordParagraph(`クラス　　${report.className}`, { size: 24, after
 ${wordCell(wordParagraph(`担当　　${report.teacherName}`, { size: 24, after: 0, line: 220 }), { width: colWidths[2], padTop: 20, padBottom: 20 })}
 `, rowHeights[0])}
 ${wordRow(wordCell(wordParagraph(`出席者　　${report.attendees || ''}　計(${attendeeCount})名`, { size: 24, after: 0, line: 220 }), { span: 3, width: tableWidth, padTop: 20, padBottom: 20 }), rowHeights[1])}
-${wordRow(wordCell(unitParagraphs, { span: 3, width: tableWidth }), rowHeights[2])}
-${wordRow(wordCell(contentParagraphs, { span: 3, width: tableWidth, padTop: 55, padBottom: 55, padLeft: 260, padRight: 260 }), rowHeights[3])}
-${wordRow(wordCell(handoffParagraphs, { span: 3, width: tableWidth, padTop: 55, padBottom: 55, padLeft: 260, padRight: 260 }), rowHeights[4])}
+${wordRow(wordCell(unitParagraphs, { span: 3, width: tableWidth, padTop: contentPadding, padBottom: contentPadding }), rowHeights[2])}
+${wordRow(wordCell(contentParagraphs, { span: 3, width: tableWidth, padTop: contentPadding, padBottom: contentPadding, padLeft: 260, padRight: 260 }), rowHeights[3])}
+${wordRow(wordCell(handoffParagraphs, { span: 3, width: tableWidth, padTop: contentPadding, padBottom: contentPadding, padLeft: 260, padRight: 260 }), rowHeights[4])}
 </w:tbl>
-<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="120"/></w:pPr>${wordRun('日本語ボランティアグループ　　わをん', { size: 24 })}</w:p>
-<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${topMargin}" w:right="${rightMargin}" w:bottom="${bottomMargin}" w:left="${leftMargin}"/></w:sectPr>
+<w:sectPr><w:footerReference w:type="default" r:id="rId1"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="${topMargin}" w:right="${rightMargin}" w:bottom="${bottomMargin}" w:left="${leftMargin}" w:header="720" w:footer="720"/></w:sectPr>
 </w:body></w:document>`
+  const footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${wordParagraph('日本語ボランティアグループ　　わをん', { align: 'right', size: 24 })}</w:ftr>`
 
   return makeZip([
-    { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>' },
+    { name: '[Content_Types].xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>' },
     { name: '_rels/.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
+    { name: 'word/_rels/document.xml.rels', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>' },
     { name: 'word/document.xml', data: documentXml },
+    { name: 'word/footer1.xml', data: footerXml },
   ])
 }
 
 function buildLessonReportPdfHtml(report) {
   const attendeeCount = lessonAttendeeCountValue(report)
-  const contentItems = String(report.content || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-  const handoffItems = String(report.handoff || '').split(/\r?\n/).map((line) => line.trim().replace(/^●\s*/, '')).filter(Boolean)
+  const contentItems = formatLessonContentLines(report.content)
+  const handoffItems = formatLessonHandoffLines(report.handoff)
   const page = LESSON_REPORT_PAGE
   return `<!doctype html>
 <html lang="ja">
@@ -725,12 +745,9 @@ function buildLessonReportPdfHtml(report) {
   .attendees { font-size: 10.5pt; line-height: 1.25; }
   .unit { font-size: 10.5pt; line-height: 1.42; }
   .content { padding: 2.1mm 7.5mm 2.1mm 10mm !important; font-weight: 700; font-size: 10.5pt; line-height: 1.45; }
-  .content ol { margin: 0; padding-left: 5.3mm; }
-  .content li { margin: 0 0 1.15mm; padding-left: 1mm; }
+  .report-line { margin: 0 0 1mm; padding-left: 6mm; text-indent: -6mm; }
   .handoff { padding: 2.1mm 7.5mm !important; font-weight: 700; font-size: 10.5pt; line-height: 1.45; }
   .handoff-title { margin: 0 0 1.2mm; }
-  .handoff ul { margin: 0; padding-left: 5mm; }
-  .handoff li { margin: 0 0 1mm; }
   .footer {
     position: absolute;
     left: ${page.tableLeftMm}mm;
@@ -753,8 +770,8 @@ function buildLessonReportPdfHtml(report) {
     </tr>
     <tr class="row-2"><td colspan="3" class="attendees">出席者　　${escapeXml(report.attendees || '')}　計(${escapeXml(attendeeCount)})名</td></tr>
     <tr class="row-3"><td colspan="3" class="unit">単元　${escapeXml(report.unit || '').replace(/\n/g, '<br>')}</td></tr>
-    <tr class="row-4"><td colspan="3" class="content"><ol>${(contentItems.length ? contentItems : ['']).map((line) => `<li>${escapeXml(line)}</li>`).join('')}</ol></td></tr>
-    <tr class="row-5"><td colspan="3" class="handoff"><div class="handoff-title">申し送り及び感想：</div><ul>${(handoffItems.length ? handoffItems : ['']).map((line) => `<li>${escapeXml(line)}</li>`).join('')}</ul></td></tr>
+    <tr class="row-4"><td colspan="3" class="content">${contentItems.map((line) => `<div class="report-line">${escapeXml(line.display)}</div>`).join('')}</td></tr>
+    <tr class="row-5"><td colspan="3" class="handoff"><div class="handoff-title">申し送り及び感想：</div>${handoffItems.map((line) => `<div class="report-line">${escapeXml(line.display)}</div>`).join('')}</td></tr>
   </table>
   <div class="footer">日本語ボランティアグループ　　わをん</div>
 </div>
@@ -765,8 +782,8 @@ function buildLessonReportPdfHtml(report) {
 
 function buildLessonReportPdfElement(report) {
   const attendeeCount = lessonAttendeeCountValue(report)
-  const contentItems = String(report.content || '').split(/\r?\n/).map((line) => line.trim().replace(/^\d+[.)．、]\s*/, '').replace(/\*\*/g, '')).filter(Boolean)
-  const handoffItems = String(report.handoff || '').split(/\r?\n/).map((line) => line.trim().replace(/^●\s*/, '').replace(/\*\*/g, '')).filter(Boolean)
+  const contentItems = formatLessonContentLines(report.content)
+  const handoffItems = formatLessonHandoffLines(report.handoff)
   const page = LESSON_REPORT_PAGE
   const root = document.createElement('div')
   root.style.position = 'fixed'
@@ -799,17 +816,17 @@ function buildLessonReportPdfElement(report) {
           <td colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.15mm 1.85mm;overflow:hidden;font-size:12pt;line-height:1.46;">単元　${escapeXml(report.unit || '').replace(/\n/g, '<br>')}</td>
         </tr>
         <tr>
-          <td colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.45mm 7.5mm 1.45mm 9.7mm;font-weight:700;font-size:12pt;line-height:1.46;">
-            <div style="min-height:${page.rowHeightsMm[3] - 3.2}mm;">
-            <ol style="margin:0;padding-left:5.4mm;">${(contentItems.length ? contentItems : ['']).map((line) => `<li style="margin:0 0 1.0mm 0;padding-left:0.7mm;">${escapeXml(line)}</li>`).join('')}</ol>
+          <td data-report-content-cell="true" colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.45mm 7.5mm 1.45mm 9.7mm;font-weight:700;font-size:12pt;line-height:1.46;">
+            <div data-report-content="true" style="min-height:${page.rowHeightsMm[3] - 3.2}mm;">
+            ${contentItems.map((line) => `<div style="margin:0 0 1mm 0;padding-left:6.1mm;text-indent:-6.1mm;">${escapeXml(line.display)}</div>`).join('')}
             </div>
           </td>
         </tr>
         <tr>
-          <td colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.45mm 7.5mm;font-weight:700;font-size:12pt;line-height:1.46;">
-            <div style="min-height:${page.rowHeightsMm[4] - 3.2}mm;">
+          <td data-report-handoff-cell="true" colspan="3" style="border:0.18mm solid #555;vertical-align:top;padding:1.45mm 7.5mm;font-weight:700;font-size:12pt;line-height:1.46;">
+            <div data-report-handoff="true" style="min-height:${page.rowHeightsMm[4] - 3.2}mm;">
             <div style="margin:0;">申し送り及び感想：</div>
-            <ul style="margin:0;padding-left:5mm;">${(handoffItems.length ? handoffItems : ['']).map((line) => `<li style="margin:0 0 0.7mm 0;">${escapeXml(line)}</li>`).join('')}</ul>
+            ${handoffItems.map((line) => `<div style="margin:0 0 0.7mm 0;padding-left:6.1mm;text-indent:-6.1mm;">${escapeXml(line.display)}</div>`).join('')}
             </div>
           </td>
         </tr>
@@ -818,6 +835,73 @@ function buildLessonReportPdfElement(report) {
     </div>
   `
   return root
+}
+
+async function blobToBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+  }
+  return window.btoa(binary)
+}
+
+async function renderElementToA4PdfBlob(element, prepareElement) {
+  document.body.appendChild(element)
+  try {
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ])
+    await document.fonts?.ready
+    prepareElement?.(element)
+    const canvas = await html2canvas(element, {
+      backgroundColor: '#ffffff',
+      scale: 2.5,
+      useCORS: true,
+      logging: false,
+    })
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true })
+    const pages = []
+    const pageHeightPx = Math.floor(canvas.width * (297 / 210))
+    for (let offsetY = 0, pageIndex = 0; offsetY < canvas.height; offsetY += pageHeightPx, pageIndex += 1) {
+      const sliceHeight = Math.min(pageHeightPx, canvas.height - offsetY)
+      const pageCanvas = document.createElement('canvas')
+      pageCanvas.width = canvas.width
+      pageCanvas.height = pageHeightPx
+      const context = pageCanvas.getContext('2d')
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
+      context.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
+      if (pageIndex > 0) pdf.addPage()
+      const pageImage = pageCanvas.toDataURL('image/jpeg', 0.96)
+      pages.push(pageImage)
+      pdf.addImage(pageImage, 'JPEG', 0, 0, 210, 297)
+    }
+    return { blob: pdf.output('blob'), pages }
+  } finally {
+    element.remove()
+  }
+}
+
+async function renderElementToPngBlob(element, prepareElement) {
+  document.body.appendChild(element)
+  try {
+    const { default: html2canvas } = await import('html2canvas')
+    await document.fonts?.ready
+    prepareElement?.(element)
+    const canvas = await html2canvas(element, {
+      backgroundColor: '#ffffff',
+      scale: 2.5,
+      useCORS: true,
+      logging: false,
+    })
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('PNGデータを作成できませんでした。')
+    return blob
+  } finally {
+    element.remove()
+  }
 }
 
 function ScrollNav({ sections, activeSection, navOpen, onToggle }) {
@@ -977,6 +1061,7 @@ export default function App() {
   const [cloudStatus, setCloudStatus] = useState('connecting')
   const [cloudMessage, setCloudMessage] = useState('共有データに接続しています...')
   const [exportMessage, setExportMessage] = useState('')
+  const [scheduleDownloadStatus, setScheduleDownloadStatus] = useState('')
   const [sessionOpen, setSessionOpen] = useState(true)
   const [specialOpen, setSpecialOpen] = useState(false)
   const [teacherOpen, setTeacherOpen] = useState(false)
@@ -995,9 +1080,15 @@ export default function App() {
   const [mailPanelOpen, setMailPanelOpen] = useState(false)
   const [mailDispatchStatus, setMailDispatchStatus] = useState('idle')
   const [mailDispatchMessage, setMailDispatchMessage] = useState('')
+  const [mailPreviewTab, setMailPreviewTab] = useState('email')
+  const [mailPreviewConfirmed, setMailPreviewConfirmed] = useState(false)
+  const [mailPdfPreview, setMailPdfPreview] = useState({ status: 'idle', url: '', base64: '', filename: '', pages: [], bytes: 0, error: '' })
   const [lessonMailPanelOpen, setLessonMailPanelOpen] = useState(false)
   const [lessonMailDispatchStatus, setLessonMailDispatchStatus] = useState('idle')
   const [lessonMailDispatchMessage, setLessonMailDispatchMessage] = useState('')
+  const [lessonMailPreviewTab, setLessonMailPreviewTab] = useState('email')
+  const [lessonMailPreviewConfirmed, setLessonMailPreviewConfirmed] = useState(false)
+  const [lessonMailPdfPreview, setLessonMailPdfPreview] = useState({ status: 'idle', url: '', base64: '', filename: '', pages: [], bytes: 0, error: '' })
   const [navOpen, setNavOpen] = useState(false)
   const [showNewBulletin, setShowNewBulletin] = useState(false)
   const [newBulletinText, setNewBulletinText] = useState('')
@@ -1016,6 +1107,10 @@ export default function App() {
   const backupFileRef = useRef(null)
   const bulletinDragRef = useRef(null)
   const teacherDragRef = useRef(null)
+  const mailPdfUrlRef = useRef('')
+  const lessonMailPdfUrlRef = useRef('')
+  const mailPdfGenerationRef = useRef(0)
+  const lessonMailPdfGenerationRef = useRef(0)
 
   const {
     year,
@@ -1112,6 +1207,11 @@ export default function App() {
       // Ignore storage failures on restricted browsers/devices.
     }
   }, [identity])
+
+  useEffect(() => () => {
+    if (mailPdfUrlRef.current) URL.revokeObjectURL(mailPdfUrlRef.current)
+    if (lessonMailPdfUrlRef.current) URL.revokeObjectURL(lessonMailPdfUrlRef.current)
+  }, [])
 
   useEffect(() => {
     setTextScaleDraft(String(textScale))
@@ -1321,9 +1421,11 @@ export default function App() {
     setMailPanelOpen(false)
     setMailDispatchStatus('idle')
     setMailDispatchMessage('')
+    setMailPreviewConfirmed(false)
     setLessonMailPanelOpen(false)
     setLessonMailDispatchStatus('idle')
     setLessonMailDispatchMessage('')
+    setLessonMailPreviewConfirmed(false)
     if (name !== ADMIN_NAME) setState((s) => ({ ...s, currentTeacher: name }))
   }
 
@@ -1333,9 +1435,11 @@ export default function App() {
     setMailPanelOpen(false)
     setMailDispatchStatus('idle')
     setMailDispatchMessage('')
+    setMailPreviewConfirmed(false)
     setLessonMailPanelOpen(false)
     setLessonMailDispatchStatus('idle')
     setLessonMailDispatchMessage('')
+    setLessonMailPreviewConfirmed(false)
   }
 
   // ── Month ────────────────────────────────────────────────────────────────────
@@ -1419,25 +1523,228 @@ export default function App() {
   }
 
   function exportWordTable() {
-    const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.docx`
+    const fileName = `${year}年${month}月_担当表.docx`
     const blob = buildRotationTableDocx(year, month, teachers, sessions, schedule, attendance, statusOptions)
     downloadBlob(blob, fileName)
     setExportMessage('Word担当表を保存しました。')
     setTimeout(() => setExportMessage(''), 3500)
   }
 
+  async function exportSchedulePdf() {
+    if (scheduleDownloadStatus) return
+    setScheduleDownloadStatus('pdf')
+    setExportMessage('PDF担当表を作成しています...')
+    try {
+      const result = await createScheduleMailPdfBlob()
+      downloadBlob(result.blob, `${year}年${month}月_担当表.pdf`)
+      setExportMessage('PDF担当表を保存しました。')
+    } catch (error) {
+      setExportMessage('')
+      window.alert(`PDF出力に失敗しました。\n${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setScheduleDownloadStatus('')
+      setTimeout(() => setExportMessage(''), 3500)
+    }
+  }
+
+  async function exportSchedulePng() {
+    if (scheduleDownloadStatus) return
+    setScheduleDownloadStatus('png')
+    setExportMessage('PNG担当表を作成しています...')
+    try {
+      const blob = await renderElementToPngBlob(buildScheduleMailPdfElement())
+      downloadBlob(blob, `${year}年${month}月_担当表.png`)
+      setExportMessage('PNG担当表を保存しました。')
+    } catch (error) {
+      setExportMessage('')
+      window.alert(`PNG出力に失敗しました。\n${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setScheduleDownloadStatus('')
+      setTimeout(() => setExportMessage(''), 3500)
+    }
+  }
+
+  function resetMailPdfPreview() {
+    mailPdfGenerationRef.current += 1
+    if (mailPdfUrlRef.current) URL.revokeObjectURL(mailPdfUrlRef.current)
+    mailPdfUrlRef.current = ''
+    setMailPdfPreview({ status: 'idle', url: '', base64: '', filename: '', pages: [], bytes: 0, error: '' })
+  }
+
+  function resetLessonMailPdfPreview() {
+    lessonMailPdfGenerationRef.current += 1
+    if (lessonMailPdfUrlRef.current) URL.revokeObjectURL(lessonMailPdfUrlRef.current)
+    lessonMailPdfUrlRef.current = ''
+    setLessonMailPdfPreview({ status: 'idle', url: '', base64: '', filename: '', pages: [], bytes: 0, error: '' })
+  }
+
+  function buildScheduleMailPdfElement() {
+    const preview = scheduleMailPreviewData()
+    const root = document.createElement('div')
+    const dateColumnWidth = (156 / Math.max(1, preview.headers.length)).toFixed(2)
+    const tableRows = preview.rows.map((row, rowIndex) => {
+      const cells = row.cells.map((cell) => {
+        const color = cell === '○' ? '#2d7f5e' : cell === '△' ? '#a86616' : cell === '×' ? '#77827f' : cell === '会議' ? '#236a78' : '#172b29'
+        const weight = ['○', '△', '×', '会議'].includes(cell) ? 700 : 500
+        return `<td style="border:0.18mm solid #9eb7b3;padding:2.3mm 1.2mm;text-align:center;vertical-align:middle;color:${color};font-weight:${weight};overflow-wrap:anywhere;">${escapeXml(cell || '') || '&nbsp;'}</td>`
+      }).join('')
+      const background = row.id === 'unassigned' ? '#fff1f1' : rowIndex % 2 === 0 ? '#ffffff' : '#f8faf9'
+      return `<tr style="background:${background};"><th style="border:0.18mm solid #9eb7b3;padding:2.3mm 1.8mm;text-align:left;background:#edf5f3;font-weight:700;">${escapeXml(row.label)}</th>${cells}</tr>`
+    }).join('')
+    const notes = preview.notes.length > 0
+      ? `<div style="margin-top:5mm;padding:3mm 4mm;border:0.18mm solid #c7d6d3;background:#f8faf9;font-size:9.5pt;line-height:1.55;"><strong>メモ</strong>${preview.notes.map((note) => `<div>${escapeXml(note)}</div>`).join('')}</div>`
+      : ''
+    root.style.position = 'fixed'
+    root.style.left = '-10000px'
+    root.style.top = '0'
+    root.style.width = '210mm'
+    root.style.minHeight = '297mm'
+    root.style.background = '#fff'
+    root.style.fontFamily = '"Noto Sans JP", Meiryo, "Yu Gothic", sans-serif'
+    root.style.color = '#172b29'
+    root.innerHTML = `
+      <div style="position:relative;width:210mm;min-height:297mm;padding:16mm 15mm 18mm;box-sizing:border-box;background:#fff;">
+        <h1 style="margin:0;text-align:center;font-size:20pt;line-height:1.25;">${year}年${month}月 担当表</h1>
+        <p style="margin:2mm 0 7mm;text-align:center;color:#55706c;font-size:10pt;">確定済みの担当表</p>
+        <table style="width:180mm;border-collapse:collapse;table-layout:fixed;font-size:10pt;line-height:1.35;">
+          <colgroup><col style="width:24mm">${preview.headers.map(() => `<col style="width:${dateColumnWidth}mm">`).join('')}</colgroup>
+          <thead><tr><th style="border:0.18mm solid #9eb7b3;padding:2.3mm 1.8mm;text-align:left;background:#236f69;color:#fff;">名前</th>${preview.headers.map((header) => `<th style="border:0.18mm solid #9eb7b3;padding:2.3mm 1.2mm;text-align:center;background:#236f69;color:#fff;">${escapeXml(header)}</th>`).join('')}</tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+        ${notes}
+        <div style="position:absolute;left:15mm;right:15mm;bottom:10mm;text-align:right;color:#55706c;font-size:9.5pt;">日本語ボランティアグループ　わをん</div>
+      </div>
+    `
+    return root
+  }
+
+  async function createScheduleMailPdfBlob() {
+    return renderElementToA4PdfBlob(buildScheduleMailPdfElement())
+  }
+
+  async function createLessonReportPdfBlob(report) {
+    const normalized = normalizeLessonReportForExport(report)
+    return renderElementToA4PdfBlob(buildLessonReportPdfElement(normalized), (reportElement) => {
+      const pxPerMm = reportElement.getBoundingClientRect().width / 210
+      const table = reportElement.querySelector('[data-report-table="true"]')
+      const footer = reportElement.querySelector('[data-report-footer="true"]')
+      const content = reportElement.querySelector('[data-report-content="true"]')
+      const handoff = reportElement.querySelector('[data-report-handoff="true"]')
+      const contentCell = reportElement.querySelector('[data-report-content-cell="true"]')
+      const handoffCell = reportElement.querySelector('[data-report-handoff-cell="true"]')
+      if (!table || !footer) return
+      const rootTop = reportElement.getBoundingClientRect().top
+      const pageHeight = 297 * pxPerMm
+      const footerGap = 4 * pxPerMm
+      const footerBottomGap = 8 * pxPerMm
+      const footerFloor = LESSON_REPORT_PAGE.footerTopMm * pxPerMm
+
+      function measureRequiredHeight() {
+        const tableBottom = table.getBoundingClientRect().bottom - rootTop
+        const footerHeight = footer.getBoundingClientRect().height
+        const footerTop = Math.max(footerFloor, tableBottom + footerGap)
+        return { footerTop, requiredHeight: footerTop + footerHeight + footerBottomGap }
+      }
+
+      let layout = measureRequiredHeight()
+      if (layout.requiredHeight > pageHeight) {
+        if (content) content.style.minHeight = '0'
+        if (handoff) handoff.style.minHeight = '0'
+        if (contentCell) contentCell.style.paddingBlock = '0.9mm'
+        if (handoffCell) handoffCell.style.paddingBlock = '0.9mm'
+        layout = measureRequiredHeight()
+      }
+
+      if (layout.requiredHeight > pageHeight) {
+        const currentTop = table.getBoundingClientRect().top - rootTop
+        const overflow = layout.requiredHeight - pageHeight + 3 * pxPerMm
+        table.style.top = `${Math.max(15 * pxPerMm, currentTop - overflow)}px`
+        layout = measureRequiredHeight()
+      }
+
+      const totalHeight = layout.requiredHeight <= pageHeight
+        ? pageHeight
+        : Math.ceil(layout.requiredHeight / pageHeight) * pageHeight
+      const footerTop = layout.footerTop
+      footer.style.top = `${footerTop}px`
+      reportElement.style.height = `${totalHeight}px`
+      reportElement.firstElementChild.style.height = `${totalHeight}px`
+    })
+  }
+
+  async function prepareScheduleMailPdf() {
+    resetMailPdfPreview()
+    const generation = ++mailPdfGenerationRef.current
+    const filename = `${year}年${month}月_担当表.pdf`
+    setMailPdfPreview({ status: 'loading', url: '', base64: '', filename, pages: [], bytes: 0, error: '' })
+    try {
+      const result = await createScheduleMailPdfBlob()
+      const base64 = await blobToBase64(result.blob)
+      if (generation !== mailPdfGenerationRef.current) return
+      const url = URL.createObjectURL(result.blob)
+      mailPdfUrlRef.current = url
+      setMailPdfPreview({ status: 'ready', url, base64, filename, pages: result.pages, bytes: result.blob.size, error: '' })
+    } catch (error) {
+      if (generation !== mailPdfGenerationRef.current) return
+      setMailPdfPreview({
+        status: 'error',
+        url: '',
+        base64: '',
+        filename,
+        pages: [],
+        bytes: 0,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function prepareLessonMailPdf(report) {
+    resetLessonMailPdfPreview()
+    const generation = ++lessonMailPdfGenerationRef.current
+    const filename = lessonReportMailDraft(report).attachmentName
+    setLessonMailPdfPreview({ status: 'loading', url: '', base64: '', filename, pages: [], bytes: 0, error: '' })
+    try {
+      const result = await createLessonReportPdfBlob(report)
+      const base64 = await blobToBase64(result.blob)
+      if (generation !== lessonMailPdfGenerationRef.current) return
+      const url = URL.createObjectURL(result.blob)
+      lessonMailPdfUrlRef.current = url
+      setLessonMailPdfPreview({ status: 'ready', url, base64, filename, pages: result.pages, bytes: result.blob.size, error: '' })
+    } catch (error) {
+      if (generation !== lessonMailPdfGenerationRef.current) return
+      setLessonMailPdfPreview({
+        status: 'error',
+        url: '',
+        base64: '',
+        filename,
+        pages: [],
+        bytes: 0,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   function scheduleMailDraft() {
     const tableText = buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions)
     return {
       subject: `【わをん】${year}年${month}月 担当表`,
-      body: `${year}年${month}月の担当表をお知らせします。\n\n${tableText}\n\n内容をご確認ください。\n\n連絡者：${identity || '未選択'}`,
+      body: `${year}年${month}月の担当表をお知らせします。\n\n${tableText}\n\n添付のPDFファイルとWordファイルをご確認ください。\n\n連絡者：${identity || '未選択'}`,
     }
   }
 
   function openScheduleMailPanel() {
     setMailDispatchStatus('idle')
     setMailDispatchMessage('')
+    setMailPreviewTab('attachment')
+    setMailPreviewConfirmed(false)
     setMailPanelOpen(true)
+    prepareScheduleMailPdf()
+  }
+
+  function closeScheduleMailPanel() {
+    if (mailDispatchStatus === 'sending') return
+    setMailPanelOpen(false)
+    resetMailPdfPreview()
   }
 
   async function copyScheduleMailDraft() {
@@ -1451,13 +1758,17 @@ export default function App() {
   }
 
   async function sendScheduleEmail() {
-    if (!identity || !isMonthLocked) return
+    if (!identity || !isMonthLocked || !mailPreviewConfirmed || mailPdfPreview.status !== 'ready') return
     const recipientCount = Math.max(0, teachers.length - 1)
-    if (!window.confirm(`${identity}さん以外の${recipientCount}名へ、${year}年${month}月の確定担当表を送信しますか？`)) return
     setMailDispatchStatus('sending')
     setMailDispatchMessage('送信しています...')
     const { data, error } = await supabase.functions.invoke('send-schedule-email', {
-      body: { monthKey, senderName: identity },
+      body: {
+        monthKey,
+        senderName: identity,
+        pdfFilename: mailPdfPreview.filename,
+        pdfBase64: mailPdfPreview.base64,
+      },
     })
     if (error || !data?.sent) {
       let responseError = null
@@ -1470,6 +1781,8 @@ export default function App() {
       setMailDispatchStatus('error')
       setMailDispatchMessage(reason === 'already_sent'
         ? 'この月の担当表はすでに送信済みです。'
+        : reason === 'invalid_pdf_attachment'
+            ? 'PDFを確認画面で作り直してから送信してください。'
         : reason === 'invalid_sender'
             ? '選択した先生の連絡先設定がありません。管理者へ確認してください。'
             : 'メール送信機能はまだサーバーに設定されていません。下書きコピーを利用できます。')
@@ -1480,21 +1793,23 @@ export default function App() {
   }
 
   function lessonReportMailDraft(report) {
-    if (!report) return { subject: '', body: '', attachmentName: '', mailDateText: '' }
+    if (!report) return { subject: '', body: '', attachmentName: '', wordAttachmentName: '', mailDateText: '' }
     const day = Number(String(report.sessionKey || '').split('/')[1])
     const reportMonth = Number(report.calendarMonth || month)
     const mailDateText = `${reportMonth}月${Number.isFinite(day) ? day : ''}日`
+    const safeClassName = report.className.replace(/[\\/:*?"<>|]/g, '_')
     return {
       mailDateText,
       subject: `【授業報告】${mailDateText} ${report.className}クラス`,
-      attachmentName: `${mailDateText}_${report.className}_授業記録.docx`,
+      attachmentName: `${mailDateText}_${safeClassName}_授業記録.pdf`,
+      wordAttachmentName: `${mailDateText}_${safeClassName}_授業記録.docx`,
       body: [
         'わをんの皆さま',
         '',
         'お疲れさまです。',
         `${mailDateText}の${report.className}クラスの授業報告をお送りします。`,
         `担当は${report.teacherName}です。`,
-        '添付のWordファイルをご確認ください。',
+        '添付のPDFファイルとWordファイルをご確認ください。',
         '',
         'よろしくお願いいたします。',
         report.teacherName,
@@ -1503,13 +1818,23 @@ export default function App() {
   }
 
   function openLessonReportMail() {
+    if (!selectedLessonReport) return
     setLessonMailDispatchStatus('idle')
     setLessonMailDispatchMessage('')
+    setLessonMailPreviewTab('attachment')
+    setLessonMailPreviewConfirmed(false)
     setLessonMailPanelOpen(true)
+    prepareLessonMailPdf(selectedLessonReport)
+  }
+
+  function closeLessonReportMail() {
+    if (lessonMailDispatchStatus === 'sending') return
+    setLessonMailPanelOpen(false)
+    resetLessonMailPdfPreview()
   }
 
   async function sendLessonReportEmail(report) {
-    if (!identity || !report) return
+    if (!identity || !report || !lessonMailPreviewConfirmed || lessonMailPdfPreview.status !== 'ready') return
     if (report.teacherName !== identity) {
       setLessonMailDispatchStatus('error')
       setLessonMailDispatchMessage('担当者本人の名前で開いている時だけ送信できます。')
@@ -1527,11 +1852,16 @@ export default function App() {
     }
     const recipientCount = Math.max(0, teachers.length - 1)
     const draft = lessonReportMailDraft(report)
-    if (!window.confirm(`${identity}さん以外の${recipientCount}名へ、${draft.mailDateText}の${report.className}クラス授業報告を送信しますか？`)) return
     setLessonMailDispatchStatus('sending')
     setLessonMailDispatchMessage('授業報告を送信しています...')
     const { data, error } = await supabase.functions.invoke('send-lesson-report-email', {
-      body: { monthKey: report.monthKey || monthKey, reportId: report.id, senderName: identity },
+      body: {
+        monthKey: report.monthKey || monthKey,
+        reportId: report.id,
+        senderName: identity,
+        pdfFilename: lessonMailPdfPreview.filename,
+        pdfBase64: lessonMailPdfPreview.base64,
+      },
     })
     if (error || !data?.sent) {
       let responseError = null
@@ -1549,6 +1879,7 @@ export default function App() {
         report_not_saved: '授業記録が共有データに保存されていません。',
         report_incomplete: '単元・授業内容・申し送りを入力してから送信してください。',
         report_teacher_unavailable: 'この記録の担当者を確認できませんでした。',
+        invalid_pdf_attachment: 'PDFを確認画面で作り直してから送信してください。',
       }
       setLessonMailDispatchStatus('error')
       setLessonMailDispatchMessage(messages[reason] || 'メール送信機能はまだサーバーに設定されていません。')
@@ -2011,54 +2342,11 @@ export default function App() {
 
   async function exportLessonReportPdf(report) {
     if (!report) return
-    const normalized = normalizeLessonReportForExport(report)
-    const reportElement = buildLessonReportPdfElement(normalized)
-    document.body.appendChild(reportElement)
     try {
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'),
-        import('jspdf'),
-      ])
-      await document.fonts?.ready
-      const pxPerMm = reportElement.getBoundingClientRect().width / 210
-      const table = reportElement.querySelector('[data-report-table="true"]')
-      const footer = reportElement.querySelector('[data-report-footer="true"]')
-      if (table && footer) {
-        const rootTop = reportElement.getBoundingClientRect().top
-        const tableBottom = table.getBoundingClientRect().bottom - rootTop
-        const footerTop = Math.max(LESSON_REPORT_PAGE.footerTopMm * pxPerMm, tableBottom + 4 * pxPerMm)
-        const pageHeight = 297 * pxPerMm
-        const totalHeight = Math.max(pageHeight, footerTop + 12 * pxPerMm)
-        footer.style.top = `${footerTop}px`
-        reportElement.style.height = `${totalHeight}px`
-        reportElement.firstElementChild.style.height = `${totalHeight}px`
-      }
-      const canvas = await html2canvas(reportElement, {
-        backgroundColor: '#ffffff',
-        scale: 2.5,
-        useCORS: true,
-        logging: false,
-      })
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true })
-      const pageHeightPx = Math.floor(canvas.width * (297 / 210))
-      for (let offsetY = 0, pageIndex = 0; offsetY < canvas.height; offsetY += pageHeightPx, pageIndex += 1) {
-        const sliceHeight = Math.min(pageHeightPx, canvas.height - offsetY)
-        const pageCanvas = document.createElement('canvas')
-        pageCanvas.width = canvas.width
-        pageCanvas.height = pageHeightPx
-        const context = pageCanvas.getContext('2d')
-        context.fillStyle = '#ffffff'
-        context.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
-        context.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
-        if (pageIndex > 0) pdf.addPage()
-        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, 210, 297)
-      }
-      const pdfBlob = pdf.output('blob')
-      downloadBlob(pdfBlob, `${lessonReportFileBase(report)}.pdf`)
+      const result = await createLessonReportPdfBlob(report)
+      downloadBlob(result.blob, `${lessonReportFileBase(report)}.pdf`)
     } catch (error) {
       window.alert(`PDF出力に失敗しました。\n${error instanceof Error ? error.message : String(error)}`)
-    } finally {
-      reportElement.remove()
     }
   }
 
@@ -2466,9 +2754,9 @@ export default function App() {
     return (
       <div className="action-row">
         <button type="button" className="primary-btn" onClick={openScheduleMailPanel}>担当表をメール送信</button>
+        <ScheduleDownloadActions />
         {isAdmin ? <button type="button" className="ghost-btn" onClick={copyLineText}>LINE用テキスト</button> : null}
         {isAdmin ? <button type="button" className="ghost-btn" onClick={exportMonthTable}>月表を保存</button> : null}
-        {isAdmin ? <button type="button" className="ghost-btn" onClick={exportWordTable}>Word表</button> : null}
         {isAdmin ? <button type="button" className="ghost-btn" onClick={exportHtmlTable}>HTML表</button> : null}
         {isAdmin ? <button type="button" className={isMonthLocked ? 'success-btn' : 'primary-btn'} onClick={isMonthLocked ? unlockMonth : finalizeMonth}>
           {isMonthLocked ? '確定済み' : '今月を確定'}
@@ -2478,33 +2766,227 @@ export default function App() {
     )
   }
 
+  function ScheduleDownloadActions({ mobile = false }) {
+    const buttons = (
+      <>
+        <button type="button" className="ghost-btn" onClick={exportWordTable} disabled={!!scheduleDownloadStatus} aria-label="担当表をWordで保存">
+          Word保存
+        </button>
+        <button type="button" className="ghost-btn" onClick={exportSchedulePdf} disabled={!!scheduleDownloadStatus} aria-label="担当表をPDFで保存">
+          {scheduleDownloadStatus === 'pdf' ? 'PDF作成中...' : 'PDF保存'}
+        </button>
+        <button type="button" className="ghost-btn" onClick={exportSchedulePng} disabled={!!scheduleDownloadStatus} aria-label="担当表をPNG画像で保存">
+          {scheduleDownloadStatus === 'png' ? 'PNG作成中...' : 'PNG保存'}
+        </button>
+      </>
+    )
+    if (mobile) {
+      return (
+        <details className="mobile-download-menu">
+          <summary>担当表をダウンロード</summary>
+          <div className="mobile-download-buttons">{buttons}</div>
+        </details>
+      )
+    }
+    return (
+      <div className="schedule-download-block">
+        <strong>担当表をダウンロード</strong>
+        <div className="schedule-download-buttons">{buttons}</div>
+      </div>
+    )
+  }
+
+  function MailPreviewTabs({ value, onChange }) {
+    return (
+      <div className="mail-preview-tabs" role="tablist" aria-label="プレビューの種類">
+        <button type="button" role="tab" aria-selected={value === 'email'} className={value === 'email' ? 'active' : ''} onClick={() => onChange('email')}>
+          メール本文
+        </button>
+        <button type="button" role="tab" aria-selected={value === 'attachment'} className={value === 'attachment' ? 'active' : ''} onClick={() => onChange('attachment')}>
+          PDFプレビュー
+        </button>
+      </div>
+    )
+  }
+
+  function PdfAttachmentPreview({ preview, onRetry, title }) {
+    if (preview.status === 'loading') {
+      return (
+        <div className="mail-pdf-state" role="status">
+          <span className="mail-pdf-spinner" aria-hidden="true" />
+          <strong>実際に送るPDFを作成しています</strong>
+          <p>このPDFの作成が終わるまで送信できません。</p>
+        </div>
+      )
+    }
+    if (preview.status === 'error') {
+      return (
+        <div className="mail-pdf-state is-error" role="alert">
+          <strong>PDFを作成できませんでした</strong>
+          <p>{preview.error || 'もう一度作成してください。'}</p>
+          <button type="button" className="ghost-btn" onClick={onRetry}>PDFを再作成</button>
+        </div>
+      )
+    }
+    if (preview.status !== 'ready' || !preview.url) {
+      return (
+        <div className="mail-pdf-state">
+          <strong>PDFはまだありません</strong>
+          <button type="button" className="ghost-btn" onClick={onRetry}>PDFを作成</button>
+        </div>
+      )
+    }
+    const sizeLabel = preview.bytes >= 1_000_000
+      ? `${(preview.bytes / 1_000_000).toFixed(1)} MB`
+      : `${Math.max(1, Math.round(preview.bytes / 1000))} KB`
+    return (
+      <div className="mail-pdf-preview">
+        <div className="mail-pdf-toolbar">
+          <div><span>送信する実ファイル（{preview.pages.length}ページ・{sizeLabel}）</span><strong>{preview.filename}</strong></div>
+          <a className="ghost-btn" href={preview.url} target="_blank" rel="noreferrer">別画面で確認</a>
+        </div>
+        <div className="mail-pdf-pages" aria-label={title}>
+          {preview.pages.map((page, index) => (
+            <figure key={`${preview.filename}-${index}`}>
+              <img src={page} alt={`${title} ${index + 1}ページ目`} />
+              <figcaption>{index + 1} / {preview.pages.length}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  function scheduleMailPreviewData() {
+    const rows = [{
+      id: 'special',
+      label: '特別連絡',
+      cells: schedule.map((session) => session.special || ''),
+    }]
+    if (schedule.some((session) => session.unassignedClasses?.length > 0)) {
+      rows.push({
+        id: 'unassigned',
+        label: '未担当',
+        cells: schedule.map((session) => session.unassignedClasses?.join('、') || ''),
+      })
+    }
+    for (const teacher of teachers) {
+      rows.push({
+        id: `teacher-${teacher.name}`,
+        label: teacher.name,
+        cells: schedule.map((session) => scheduleCellText(teacher, session, attendance, statusOptions)),
+      })
+    }
+    return {
+      headers: sessions.map((session) => session.label),
+      rows,
+      notes: sessions
+        .map((session) => memos[session.key] ? `${session.label}: ${memos[session.key]}` : '')
+        .filter(Boolean),
+    }
+  }
+
+  function ScheduleMailTablePreview() {
+    const preview = scheduleMailPreviewData()
+    return (
+      <div className="mail-table-scroll">
+        <table className="mail-schedule-table">
+          <thead>
+            <tr>
+              <th>名前</th>
+              {preview.headers.map((header) => <th key={header}>{header}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {preview.rows.map((row) => (
+              <tr key={row.id} className={row.id === 'unassigned' ? 'is-unassigned' : ''}>
+                <th scope="row">{row.label}</th>
+                {row.cells.map((cell, index) => {
+                  const tone = cell === '○' ? 'is-yes' : cell === '△' ? 'is-maybe' : cell === '×' ? 'is-no' : cell === '会議' ? 'is-meeting' : ''
+                  return <td key={`${row.id}-${index}`} className={tone}>{cell || '\u00a0'}</td>
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  function ScheduleMailDocumentPreview() {
+    const preview = scheduleMailPreviewData()
+    return (
+      <article className="mail-document-preview is-email">
+        <span className="mail-document-brand">Wawon Rotation</span>
+        <h3>{year}年{month}月 担当表</h3>
+        <p className="mail-document-lead">{year}年{month}月の確定担当表をお送りします。PDF版とWord版を添付しています。</p>
+        <ScheduleMailTablePreview />
+        {preview.notes.length > 0 ? (
+          <section className="mail-document-notes">
+            <strong>メモ</strong>
+            {preview.notes.map((note) => <p key={note}>{note}</p>)}
+          </section>
+        ) : null}
+        <footer>内容をご確認ください。<br />連絡者：{identity}</footer>
+      </article>
+    )
+  }
+
   function ScheduleMailPanel() {
     if (!identity || !mailPanelOpen) return null
     const draft = scheduleMailDraft()
     const recipientNames = teachers.filter((teacher) => teacher.name !== identity).map((teacher) => teacher.name)
     return (
-      <section className="schedule-mail-panel" aria-label="担当表メール">
-        <div className="schedule-mail-head">
-          <div><span>担当表メール</span><strong>{year}年{month}月</strong></div>
-          <button type="button" className="icon-close-btn" title="閉じる" aria-label="閉じる" onClick={() => setMailPanelOpen(false)}>×</button>
-        </div>
-        <dl className="schedule-mail-meta">
-          <div><dt>送信元</dt><dd>Wawon管理用Gmail</dd></div>
-          <div><dt>連絡者</dt><dd>{identity}</dd></div>
-          <div><dt>配信先</dt><dd>{recipientNames.join('、')}（{recipientNames.length}名）</dd></div>
-          <div><dt>件名</dt><dd>{draft.subject}</dd></div>
-        </dl>
-        <p className="schedule-mail-format-note">見やすい表形式の本文とWordファイルを送ります。</p>
-        <textarea value={draft.body} readOnly rows={9} aria-label="メール本文" />
-        <div className="schedule-mail-actions">
-          <button type="button" className="ghost-btn" onClick={copyScheduleMailDraft}>下書きをコピー</button>
-          <button type="button" className="primary-btn" onClick={sendScheduleEmail} disabled={!isMonthLocked || ['sending', 'sent'].includes(mailDispatchStatus)}>
-            {mailDispatchStatus === 'sending' ? '送信中...' : mailDispatchStatus === 'sent' ? '送信済み' : 'この担当表を送信'}
-          </button>
-        </div>
-        {!isMonthLocked ? <p className="inline-message is-warning">月を確定すると送信できます。</p> : null}
-        {mailDispatchMessage ? <p className={`inline-message ${mailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{mailDispatchMessage}</p> : null}
-      </section>
+      <div className="mail-preview-backdrop" role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) closeScheduleMailPanel()
+      }}>
+        <section className="mail-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="schedule-mail-title">
+          <div className="schedule-mail-head">
+            <div><span>担当表メール</span><strong id="schedule-mail-title">送信前プレビュー</strong></div>
+            <button type="button" className="icon-close-btn" title="閉じる" aria-label="閉じる" onClick={closeScheduleMailPanel} disabled={mailDispatchStatus === 'sending'}>×</button>
+          </div>
+          <div className="mail-preview-layout">
+            <aside className="mail-preview-summary">
+              <dl className="schedule-mail-meta">
+                <div><dt>送信元</dt><dd>Wawon管理用Gmail</dd></div>
+                <div><dt>連絡者</dt><dd>{identity}</dd></div>
+                <div><dt>配信先</dt><dd>{recipientNames.join('、')}（{recipientNames.length}名）</dd></div>
+                <div><dt>件名</dt><dd>{draft.subject}</dd></div>
+              </dl>
+              <div className="lesson-mail-attachment">
+                <span>添付（2件）</span>
+                <div className="lesson-mail-attachment-files">
+                  <strong>{mailPdfPreview.filename || `${year}年${month}月_担当表.pdf`}</strong>
+                  <strong>{year}年{month}月_担当表.docx</strong>
+                  <small>画面では、実際に送るPDFをプレビューしています。</small>
+                </div>
+              </div>
+              <button type="button" className="ghost-btn" onClick={copyScheduleMailDraft}>下書きをコピー</button>
+            </aside>
+            <main className="mail-preview-main">
+              <MailPreviewTabs value={mailPreviewTab} onChange={setMailPreviewTab} />
+              <div className="mail-preview-canvas" role="tabpanel">
+                {mailPreviewTab === 'email'
+                  ? <ScheduleMailDocumentPreview />
+                  : <PdfAttachmentPreview preview={mailPdfPreview} onRetry={prepareScheduleMailPdf} title={`${year}年${month}月 担当表PDF`} />}
+              </div>
+            </main>
+          </div>
+          <label className="mail-preview-confirm">
+            <input type="checkbox" checked={mailPreviewConfirmed} onChange={(event) => setMailPreviewConfirmed(event.target.checked)} disabled={mailDispatchStatus === 'sending' || mailPdfPreview.status !== 'ready'} />
+            <span><strong>送信内容を確認しました</strong><small>宛先、表、特別連絡、状態記号と実際のPDFを確認しました。送信時は同じ内容のWordも添付されます。</small></span>
+          </label>
+          {!isMonthLocked ? <p className="inline-message is-warning">月を確定すると送信できます。</p> : null}
+          {mailPdfPreview.status === 'loading' ? <p className="inline-message">PDFを作成しています...</p> : null}
+          {mailDispatchMessage ? <p className={`inline-message ${mailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{mailDispatchMessage}</p> : null}
+          <div className="schedule-mail-actions">
+            <button type="button" className="ghost-btn" onClick={closeScheduleMailPanel} disabled={mailDispatchStatus === 'sending'}>戻る</button>
+            <button type="button" className="primary-btn" onClick={sendScheduleEmail} disabled={!isMonthLocked || !mailPreviewConfirmed || mailPdfPreview.status !== 'ready' || ['sending', 'sent'].includes(mailDispatchStatus)}>
+              {mailDispatchStatus === 'sending' ? '送信中...' : mailDispatchStatus === 'sent' ? '送信済み' : 'この内容で送信'}
+            </button>
+          </div>
+        </section>
+      </div>
     )
   }
 
@@ -2553,7 +3035,7 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>{isAdmin ? '管理者アクション' : '担当表の共有'}</h2>
-                <p>{isAdmin ? '共有、保存、確定をここから行います。' : '確定済みの担当表を、自分以外の先生へ送ります。'}</p>
+                <p>{isAdmin ? '共有、保存、確定をここから行います。' : '担当表を送信したり、Word・PDF・画像で保存できます。'}</p>
               </div>
             </div>
             <ExportActions />
@@ -3332,18 +3814,43 @@ export default function App() {
 
   function LessonReportPreview({ report }) {
     if (!report) return null
+    const contentLines = formatLessonContentLines(report.content)
+    const handoffLines = formatLessonHandoffLines(report.handoff)
     return (
       <div className="lesson-word-preview">
-        <strong>日本語ボランティアグループ　わをん</strong>
-        <div className="lesson-preview-grid">
-          <span>{report.dateText}</span>
-          <span>クラス {report.className}</span>
-          <span>担当 {report.teacherName}</span>
-        </div>
-        <p>出席者 {report.attendees || '未入力'}　計{lessonAttendeeCountValue(report) || '0'}名</p>
-        <p>単元 {report.unit || '未入力'}</p>
-        <p>{report.content || '授業内容を入力するとここに表示されます。'}</p>
-        <p>申し送り及び感想：{report.handoff || '未入力'}</p>
+        <table aria-label={`${report.dateText} ${report.className} 授業記録`}>
+          <tbody>
+            <tr>
+              <td>{report.dateText}</td>
+              <td>クラス　　{report.className}</td>
+              <td>担当　　{report.teacherName}</td>
+            </tr>
+            <tr>
+              <td colSpan="3">出席者　　{report.attendees || '未入力'}　計({lessonAttendeeCountValue(report) || '0'})名</td>
+            </tr>
+            <tr>
+              <td colSpan="3" className="lesson-preview-unit">
+                {String(report.unit || '未入力').split(/\r?\n/).map((line, index) => <p key={`${line}-${index}`}>単元　{line}</p>)}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan="3" className="lesson-preview-content">
+                {contentLines.length > 0
+                  ? contentLines.map((line, index) => <p className="lesson-preview-line" key={`${line.display}-${index}`}>{line.display}</p>)
+                  : <p>授業内容を入力するとここに表示されます。</p>}
+              </td>
+            </tr>
+            <tr>
+              <td colSpan="3" className="lesson-preview-handoff">
+                <strong>申し送り及び感想：</strong>
+                {handoffLines.length > 0
+                  ? handoffLines.map((line, index) => <p className="lesson-preview-line" key={`${line.display}-${index}`}>{line.display}</p>)
+                  : <p>未入力</p>}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <footer>日本語ボランティアグループ　　わをん</footer>
       </div>
     )
   }
@@ -3423,35 +3930,55 @@ export default function App() {
     const recipientNames = teachers.filter((teacher) => teacher.name !== identity).map((teacher) => teacher.name)
     const reportComplete = report.status === '完了' && !!report.updatedAt
     const senderMatches = report.teacherName === identity
-    const canSend = reportComplete && senderMatches && cloudStatus === 'ready' && lessonMailDispatchStatus !== 'sent'
+    const canSend = reportComplete && senderMatches && cloudStatus === 'ready' && lessonMailPreviewConfirmed && lessonMailPdfPreview.status === 'ready' && lessonMailDispatchStatus !== 'sent'
     return (
-      <div className="lesson-mail-backdrop" role="presentation" onMouseDown={(event) => {
-        if (event.target === event.currentTarget && lessonMailDispatchStatus !== 'sending') setLessonMailPanelOpen(false)
+      <div className="mail-preview-backdrop" role="presentation" onMouseDown={(event) => {
+        if (event.target === event.currentTarget) closeLessonReportMail()
       }}>
-        <section className="lesson-mail-dialog" role="dialog" aria-modal="true" aria-labelledby="lesson-mail-title">
+        <section className="mail-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="lesson-mail-title">
           <div className="schedule-mail-head">
-            <div><span>授業報告メール</span><strong id="lesson-mail-title">送信内容を確認</strong></div>
-            <button type="button" className="icon-close-btn" title="閉じる" aria-label="閉じる" onClick={() => setLessonMailPanelOpen(false)} disabled={lessonMailDispatchStatus === 'sending'}>×</button>
+            <div><span>授業報告メール</span><strong id="lesson-mail-title">送信前プレビュー</strong></div>
+            <button type="button" className="icon-close-btn" title="閉じる" aria-label="閉じる" onClick={closeLessonReportMail} disabled={lessonMailDispatchStatus === 'sending'}>×</button>
           </div>
-          <dl className="schedule-mail-meta">
-            <div><dt>授業</dt><dd>{draft.mailDateText}　{report.className}クラス</dd></div>
-            <div><dt>送信元</dt><dd>Wawon管理用Gmail</dd></div>
-            <div><dt>担当者</dt><dd>{identity}</dd></div>
-            <div><dt>配信先</dt><dd>{recipientNames.join('、')}（{recipientNames.length}名）</dd></div>
-            <div><dt>件名</dt><dd>{draft.subject}</dd></div>
-          </dl>
-          <div className="lesson-mail-attachment">
-            <span>Word添付</span>
-            <strong>{draft.attachmentName}</strong>
+          <div className="mail-preview-layout">
+            <aside className="mail-preview-summary">
+              <dl className="schedule-mail-meta">
+                <div><dt>授業</dt><dd>{draft.mailDateText}　{report.className}クラス</dd></div>
+                <div><dt>送信元</dt><dd>Wawon管理用Gmail</dd></div>
+                <div><dt>担当者</dt><dd>{identity}</dd></div>
+                <div><dt>配信先</dt><dd>{recipientNames.join('、')}（{recipientNames.length}名）</dd></div>
+                <div><dt>件名</dt><dd>{draft.subject}</dd></div>
+              </dl>
+              <div className="lesson-mail-attachment">
+                <span>添付（2件）</span>
+                <div className="lesson-mail-attachment-files">
+                  <strong>{lessonMailPdfPreview.filename || draft.attachmentName}</strong>
+                  <strong>{draft.wordAttachmentName}</strong>
+                  <small>画面では、実際に送るPDFをプレビューしています。</small>
+                </div>
+              </div>
+              <p className="schedule-mail-format-note">同じ保存内容は重複送信されません。記録を変更して保存すると、修正版を再送できます。</p>
+            </aside>
+            <main className="mail-preview-main">
+              <MailPreviewTabs value={lessonMailPreviewTab} onChange={setLessonMailPreviewTab} />
+              <div className="mail-preview-canvas" role="tabpanel">
+                {lessonMailPreviewTab === 'email'
+                  ? <pre className="lesson-mail-body-preview">{draft.body}</pre>
+                  : <PdfAttachmentPreview preview={lessonMailPdfPreview} onRetry={() => prepareLessonMailPdf(report)} title={`${draft.mailDateText} ${report.className} 授業記録PDF`} />}
+              </div>
+            </main>
           </div>
-          <pre className="lesson-mail-body-preview">{draft.body}</pre>
-          <p className="schedule-mail-format-note">同じ保存内容は重複送信されません。記録を変更して保存すると、修正版を再送できます。</p>
+          <label className="mail-preview-confirm">
+            <input type="checkbox" checked={lessonMailPreviewConfirmed} onChange={(event) => setLessonMailPreviewConfirmed(event.target.checked)} disabled={lessonMailDispatchStatus === 'sending' || lessonMailPdfPreview.status !== 'ready'} />
+            <span><strong>送信内容を確認しました</strong><small>宛先、本文、日付、クラス、担当者と実際のPDFを確認しました。送信時は同じ内容のWordも添付されます。</small></span>
+          </label>
           {!senderMatches ? <p className="inline-message is-warning">担当者「{report.teacherName}」本人の名前で開いている時だけ送信できます。</p> : null}
           {!reportComplete ? <p className="inline-message is-warning">単元・授業内容・申し送りを入力し、保存が完了すると送信できます。</p> : null}
           {cloudStatus !== 'ready' ? <p className="inline-message is-warning">共有データを保存しています。完了までお待ちください。</p> : null}
+          {lessonMailPdfPreview.status === 'loading' ? <p className="inline-message">PDFを作成しています...</p> : null}
           {lessonMailDispatchMessage ? <p className={`inline-message ${lessonMailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{lessonMailDispatchMessage}</p> : null}
           <div className="schedule-mail-actions">
-            <button type="button" className="ghost-btn" onClick={() => setLessonMailPanelOpen(false)} disabled={lessonMailDispatchStatus === 'sending'}>戻る</button>
+            <button type="button" className="ghost-btn" onClick={closeLessonReportMail} disabled={lessonMailDispatchStatus === 'sending'}>戻る</button>
             <button type="button" className="primary-btn" onClick={() => sendLessonReportEmail(report)} disabled={!canSend || lessonMailDispatchStatus === 'sending'}>
               {lessonMailDispatchStatus === 'sending' ? '送信中...' : lessonMailDispatchStatus === 'sent' ? '送信済み' : 'この内容で送信'}
             </button>
@@ -3466,7 +3993,7 @@ export default function App() {
       <section id="lessonReports" className="screen-view">
         <AppHeader
           title="授業記録"
-          subtitle="授業後の報告書を作成して、Word形式で保存します。"
+          subtitle="授業後の報告書を作成し、PDFまたはWord形式で保存します。"
           actions={<div className="action-row"><button type="button" className="primary-btn" onClick={openLessonReportMail} disabled={!selectedLessonReport}>メール送信</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button><button type="button" className="ghost-btn" disabled={!selectedLessonReport}>保存済み</button></div>}
         />
         {LessonReportMailDialog({ report: selectedLessonReport })}
@@ -3891,6 +4418,8 @@ export default function App() {
           <button type="button" onClick={copyLineText}>LINEコピー</button>
           <button type="button" onClick={exportHtmlTable}>HTML出力</button>
         </div>
+        <ScheduleDownloadActions mobile />
+        {exportMessage ? <p className="mobile-export-message" role="status">{exportMessage}</p> : null}
         <ScheduleMailPanel />
         <div className="mobile-card-list">
           {schedule.map((session) => (

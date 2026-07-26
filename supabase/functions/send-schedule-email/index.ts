@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
+import { validatePdfAttachment } from '../_shared/pdf-attachment.ts'
 import { buildScheduleMailPackage, enrichScheduleMarkdown } from './mail-format.ts'
 
 const allowedOrigins = new Set([
@@ -62,7 +63,7 @@ Deno.serve(async (request) => {
   const origin = request.headers.get('origin') || ''
   if (origin && !allowedOrigins.has(origin)) return response(request, { sent: false, error: 'origin_not_allowed' }, 403)
 
-  let payload: { monthKey?: string; senderName?: string }
+  let payload: { monthKey?: string; senderName?: string; pdfFilename?: string; pdfBase64?: string }
   try {
     payload = await request.json()
   } catch {
@@ -117,15 +118,22 @@ Deno.serve(async (request) => {
 
   const [year, month] = monthKey.split('-').map(Number)
   const subject = `【わをん】${year}年${month}月 担当表`
+  let pdfAttachment
+  try {
+    pdfAttachment = validatePdfAttachment(payload.pdfBase64, payload.pdfFilename, `${year}年${month}月_担当表.pdf`)
+  } catch {
+    return response(request, { sent: false, error: 'invalid_pdf_attachment' }, 400)
+  }
   let mailPackage
   try {
     const displayMarkdown = enrichScheduleMarkdown(archiveMarkdown, state, monthKey)
-    mailPackage = buildScheduleMailPackage(displayMarkdown, year, month, senderName)
+    mailPackage = buildScheduleMailPackage(displayMarkdown, year, month, senderName, pdfAttachment.base64)
   } catch {
     return response(request, { sent: false, error: 'invalid_schedule_archive' }, 503)
   }
-  const { text, html, attachment } = mailPackage
-  const contentHash = await sha256(`${senderName}\n${recipientEmails.slice().sort().join(',')}\n${subject}\n${text}\n${html}\n${attachment.base64}`)
+  const { text, html, attachments } = mailPackage
+  const attachmentHashInput = attachments.map((attachment) => `${attachment.filename}\n${attachment.mimeType}\n${attachment.base64}`).join('\n')
+  const contentHash = await sha256(`${senderName}\n${recipientEmails.slice().sort().join(',')}\n${subject}\n${text}\n${html}\n${attachmentHashInput}`)
   const dispatchKey = await sha256(`wawon-schedule-email:${monthKey}`)
 
   const { data: existing, error: existingError } = await service
@@ -183,7 +191,7 @@ Deno.serve(async (request) => {
         subject,
         text,
         html,
-        attachments: [attachment],
+        attachments,
         dispatchKey,
       }),
     })

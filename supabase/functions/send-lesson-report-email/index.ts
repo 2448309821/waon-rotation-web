@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
+import { validatePdfAttachment } from '../_shared/pdf-attachment.ts'
 import { buildLessonReportMailPackage, resolveLessonReport } from './lesson-report-mail-format.ts'
 
 const allowedOrigins = new Set([
@@ -61,7 +62,7 @@ Deno.serve(async (request) => {
   const origin = request.headers.get('origin') || ''
   if (origin && !allowedOrigins.has(origin)) return response(request, { sent: false, error: 'origin_not_allowed' }, 403)
 
-  let payload: { monthKey?: string; reportId?: string; senderName?: string }
+  let payload: { monthKey?: string; reportId?: string; senderName?: string; pdfFilename?: string; pdfBase64?: string }
   try {
     payload = await request.json()
   } catch {
@@ -111,9 +112,21 @@ Deno.serve(async (request) => {
   }
   if (report.teacherName !== senderName) return response(request, { sent: false, error: 'sender_not_report_teacher' }, 403)
 
-  const mailPackage = buildLessonReportMailPackage(report)
-  const { subject, text, html, attachment } = mailPackage
-  const contentHash = await sha256(`${senderName}\n${recipientEmails.slice().sort().join(',')}\n${subject}\n${text}\n${html}\n${attachment.base64}`)
+  const safeClassName = report.className.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)
+  let pdfAttachment
+  try {
+    pdfAttachment = validatePdfAttachment(
+      payload.pdfBase64,
+      payload.pdfFilename,
+      `${report.mailDateText}_${safeClassName}_授業記録.pdf`,
+    )
+  } catch {
+    return response(request, { sent: false, error: 'invalid_pdf_attachment' }, 400)
+  }
+  const mailPackage = buildLessonReportMailPackage(report, pdfAttachment.base64)
+  const { subject, text, html, attachments } = mailPackage
+  const attachmentHashInput = attachments.map((attachment) => `${attachment.filename}\n${attachment.mimeType}\n${attachment.base64}`).join('\n')
+  const contentHash = await sha256(`${senderName}\n${recipientEmails.slice().sort().join(',')}\n${subject}\n${text}\n${html}\n${attachmentHashInput}`)
   const dispatchKey = await sha256(`wawon-lesson-report-email:${monthKey}:${reportId}:${report.updatedAt}`)
   const { data: existing, error: existingError } = await service
     .from('lesson_report_email_dispatches')
@@ -173,7 +186,7 @@ Deno.serve(async (request) => {
         subject,
         text,
         html,
-        attachments: [attachment],
+        attachments,
         dispatchKey,
       }),
     })

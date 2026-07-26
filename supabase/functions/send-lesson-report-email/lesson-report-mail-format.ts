@@ -26,7 +26,7 @@ export type LessonReportMailPackage = {
   subject: string
   text: string
   html: string
-  attachment: { filename: string; mimeType: string; base64: string }
+  attachments: Array<{ filename: string; mimeType: string; base64: string }>
 }
 
 function escapeXml(value: unknown) {
@@ -138,17 +138,32 @@ function wordParagraph(text: string, { bold = false, size = 24, align = 'left', 
   return `<w:p><w:pPr><w:jc w:val="${align}"/><w:spacing w:before="0" w:after="${after}" w:line="${line}" w:lineRule="auto"/></w:pPr>${wordRun(text, { bold, size })}</w:p>`
 }
 
+const EXPLICIT_LESSON_MARKER = /^(?:(?:\d{1,3}|[０-９]{1,3})\s*(?:[.)．、:：]|\s)|(?:\(\s*(?:\d{1,3}|[０-９]{1,3})\s*\)|（\s*(?:\d{1,3}|[０-９]{1,3})\s*）)|[①-⑳㉑-㉟㊱-㊿]|[一二三四五六七八九十百]+\s*[.)．、]|[・●◯○◎◇◆□■△▲▽▼※＊*•‣⁃]\s*|[-－—–]\s+)/
+
+function lessonLines(value: string) {
+  return String(value ?? '').split(/\r?\n/)
+    .map((line) => line.replace(/\*\*/g, '').trim())
+    .filter(Boolean)
+}
+
+function formattedContentLines(value: string) {
+  return lessonLines(value).map((line, index) => EXPLICIT_LESSON_MARKER.test(line) ? line : `${index + 1}.  ${line}`)
+}
+
+function formattedHandoffLines(value: string) {
+  return lessonLines(value).map((line) => EXPLICIT_LESSON_MARKER.test(line) ? line : `●  ${line}`)
+}
+
 function contentParagraphs(value: string) {
-  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-  return lines.map((line, index) => wordParagraph(`${index + 1}.  ${line.replace(/^\d+[.)．、]\s*/, '').replace(/\*\*/g, '')}`, {
+  return formattedContentLines(value).map((line) => wordParagraph(line, {
     bold: true,
     size: 24,
   })).join('')
 }
 
 function handoffParagraphs(value: string) {
-  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-    .map((line) => wordParagraph(`●  ${line.replace(/^●\s*/, '').replace(/\*\*/g, '')}`, { bold: true, size: 24 }))
+  return formattedHandoffLines(value)
+    .map((line) => wordParagraph(line, { bold: true, size: 24 }))
     .join('')
 }
 
@@ -270,7 +285,7 @@ function mailBody(report: LessonReport) {
     'お疲れさまです。',
     `${report.mailDateText}の${report.className}クラスの授業報告をお送りします。`,
     `担当は${report.teacherName}です。`,
-    '添付のWordファイルをご確認ください。',
+    '添付のPDFファイルとWordファイルをご確認ください。',
     '',
     'よろしくお願いいたします。',
     report.teacherName,
@@ -280,22 +295,28 @@ function mailBody(report: LessonReport) {
 function mailHtml(report: LessonReport) {
   return `<!doctype html><html lang="ja"><body style="margin:0;padding:24px;font-family:Meiryo,'Yu Gothic',sans-serif;color:#142826;font-size:15px;line-height:1.8;">` +
     `<p style="margin:0 0 18px;">わをんの皆さま</p>` +
-    `<p style="margin:0 0 18px;">お疲れさまです。<br>${escapeHtml(report.mailDateText)}の${escapeHtml(report.className)}クラスの授業報告をお送りします。<br>担当は${escapeHtml(report.teacherName)}です。<br>添付のWordファイルをご確認ください。</p>` +
+    `<p style="margin:0 0 18px;">お疲れさまです。<br>${escapeHtml(report.mailDateText)}の${escapeHtml(report.className)}クラスの授業報告をお送りします。<br>担当は${escapeHtml(report.teacherName)}です。<br>添付のPDFファイルとWordファイルをご確認ください。</p>` +
     `<p style="margin:0;">よろしくお願いいたします。<br>${escapeHtml(report.teacherName)}</p>` +
     `</body></html>`
 }
 
-export function buildLessonReportMailPackage(report: LessonReport): LessonReportMailPackage {
+export function buildLessonReportMailPackage(report: LessonReport, pdfBase64: string): LessonReportMailPackage {
   const safeClassName = report.className.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)
-  const docx = buildLessonReportDocx(report)
   return {
     subject: `【授業報告】${report.mailDateText} ${report.className}クラス`,
     text: mailBody(report),
     html: mailHtml(report),
-    attachment: {
-      filename: `${report.mailDateText}_${safeClassName}_授業記録.docx`,
-      mimeType: DOCX_MIME,
-      base64: bytesToBase64(docx),
-    },
+    attachments: [
+      {
+        filename: `${report.mailDateText}_${safeClassName}_授業記録.pdf`,
+        mimeType: 'application/pdf',
+        base64: pdfBase64,
+      },
+      {
+        filename: `${report.mailDateText}_${safeClassName}_授業記録.docx`,
+        mimeType: DOCX_MIME,
+        base64: bytesToBase64(buildLessonReportDocx(report)),
+      },
+    ],
   }
 }
