@@ -63,20 +63,37 @@ function doPost(e) {
 }
 
 function buildAttachments_(value) {
-  if (!Array.isArray(value) || value.length !== 1) return null;
+  if (!Array.isArray(value) || value.length !== 2) return null;
   try {
-    const attachment = value[0] || {};
-    const filename = String(attachment.filename || '').trim();
-    const mimeType = String(attachment.mimeType || '').trim();
-    const base64 = String(attachment.base64 || '').trim();
-    const scheduleDocument = /^\d{4}年\d{1,2}月_担当表\.docx$/.test(filename);
-    const lessonReportDocument = /^\d{1,2}月\d{1,2}日_[^\\/:*?"<>|]{1,40}_授業記録\.docx$/.test(filename);
-    if (!scheduleDocument && !lessonReportDocument) return null;
-    if (mimeType !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return null;
-    if (!base64 || base64.length > 1500000) return null;
-    const bytes = Utilities.base64Decode(base64);
-    if (bytes.length < 1000 || bytes.length > 1000000) return null;
-    return [Utilities.newBlob(bytes, mimeType, filename)];
+    const blobs = [];
+    const stems = [];
+    const extensions = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const attachment = value[index] || {};
+      const filename = String(attachment.filename || '').trim();
+      const mimeType = String(attachment.mimeType || '').trim();
+      const base64 = String(attachment.base64 || '').trim();
+      const scheduleDocument = /^(\d{4}年\d{1,2}月_担当表)\.(pdf|docx)$/.exec(filename);
+      const lessonReportDocument = /^(\d{1,2}月\d{1,2}日_[^\\/:*?"<>|]{1,40}_授業記録)\.(pdf|docx)$/.exec(filename);
+      const match = scheduleDocument || lessonReportDocument;
+      if (!match) return null;
+      const extension = match[2];
+      const expectedMime = extension === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if (mimeType !== expectedMime) return null;
+      if (!base64 || base64.length > 10700000) return null;
+      const bytes = Utilities.base64Decode(base64);
+      if (bytes.length < 500 || bytes.length > 8000000) return null;
+      if (extension === 'pdf' && String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]) !== '%PDF-') return null;
+      if (extension === 'docx' && String.fromCharCode(bytes[0], bytes[1]) !== 'PK') return null;
+      stems.push(match[1]);
+      extensions.push(extension);
+      blobs.push(Utilities.newBlob(bytes, mimeType, filename));
+    }
+    if (stems[0] !== stems[1]) return null;
+    if (extensions.slice().sort().join(',') !== 'docx,pdf') return null;
+    return blobs;
   } catch (error) {
     return null;
   }

@@ -14,7 +14,7 @@ type MailAttachment = {
 export type ScheduleMailPackage = {
   text: string
   html: string
-  attachment: MailAttachment
+  attachments: MailAttachment[]
 }
 
 type ScheduleStateForMail = {
@@ -146,7 +146,7 @@ function buildHtmlTable(schedule: ParsedSchedule) {
 function buildPlainText(schedule: ParsedSchedule, year: number, month: number, senderName: string) {
   const lines = [
     `${year}年${month}月の確定担当表をお送りします。`,
-    'Word版を添付しています。',
+    'PDF版とWord版を添付しています。',
     '',
   ]
   for (let column = 1; column < schedule.headers.length; column += 1) {
@@ -173,7 +173,7 @@ function buildEmailHtml(schedule: ParsedSchedule, year: number, month: number, s
     `<div style="box-sizing:border-box;width:100%;background:#ffffff;border:1px solid #d7e1df;border-radius:6px;padding:22px 18px;">` +
     `<div style="font-size:13px;color:#55706c;margin-bottom:6px;">Wawon Rotation</div>` +
     `<h1 style="margin:0 0 8px;font-size:23px;line-height:1.35;">${year}年${month}月 担当表</h1>` +
-    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;">${year}年${month}月の確定担当表をお送りします。Word版も添付しています。</p>` +
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;">${year}年${month}月の確定担当表をお送りします。PDF版とWord版を添付しています。</p>` +
     `<div style="width:100%;overflow-x:auto;">${buildHtmlTable(schedule)}</div>${notes}` +
     `<p style="margin:20px 0 0;font-size:13px;line-height:1.65;color:#55706c;">内容をご確認ください。<br>連絡者：${escapeHtml(senderName)}</p>` +
     `</div></div></body></html>`
@@ -298,16 +298,28 @@ ${wordParagraph('日本語ボランティアグループ　わをん', { align: 
   ])
 }
 
-export function buildScheduleMailPackage(markdown: string, year: number, month: number, senderName: string): ScheduleMailPackage {
+export function buildScheduleMailPackage(
+  markdown: string,
+  year: number,
+  month: number,
+  senderName: string,
+  pdfBase64: string,
+): ScheduleMailPackage {
   const schedule = parseScheduleMarkdown(markdown)
-  const docx = buildScheduleDocx(schedule, year, month)
   return {
     text: buildPlainText(schedule, year, month, senderName),
     html: buildEmailHtml(schedule, year, month, senderName),
-    attachment: {
-      filename: `${year}年${month}月_担当表.docx`,
-      mimeType: DOCX_MIME,
-      base64: bytesToBase64(docx),
-    },
+    attachments: [
+      {
+        filename: `${year}年${month}月_担当表.pdf`,
+        mimeType: 'application/pdf',
+        base64: pdfBase64,
+      },
+      {
+        filename: `${year}年${month}月_担当表.docx`,
+        mimeType: DOCX_MIME,
+        base64: bytesToBase64(buildScheduleDocx(schedule, year, month)),
+      },
+    ],
   }
 }
