@@ -1085,6 +1085,7 @@ export default function App() {
   const [mailPdfPreview, setMailPdfPreview] = useState({ status: 'idle', url: '', base64: '', filename: '', pages: [], bytes: 0, error: '' })
   const [lessonMailPanelOpen, setLessonMailPanelOpen] = useState(false)
   const [lessonMailDispatchStatus, setLessonMailDispatchStatus] = useState('idle')
+  const [lessonMailDispatchMode, setLessonMailDispatchMode] = useState('')
   const [lessonMailDispatchMessage, setLessonMailDispatchMessage] = useState('')
   const [lessonMailPreviewTab, setLessonMailPreviewTab] = useState('email')
   const [lessonMailPreviewConfirmed, setLessonMailPreviewConfirmed] = useState(false)
@@ -1424,6 +1425,7 @@ export default function App() {
     setMailPreviewConfirmed(false)
     setLessonMailPanelOpen(false)
     setLessonMailDispatchStatus('idle')
+    setLessonMailDispatchMode('')
     setLessonMailDispatchMessage('')
     setLessonMailPreviewConfirmed(false)
     if (name !== ADMIN_NAME) setState((s) => ({ ...s, currentTeacher: name }))
@@ -1438,6 +1440,7 @@ export default function App() {
     setMailPreviewConfirmed(false)
     setLessonMailPanelOpen(false)
     setLessonMailDispatchStatus('idle')
+    setLessonMailDispatchMode('')
     setLessonMailDispatchMessage('')
     setLessonMailPreviewConfirmed(false)
   }
@@ -1820,6 +1823,7 @@ export default function App() {
   function openLessonReportMail() {
     if (!selectedLessonReport) return
     setLessonMailDispatchStatus('idle')
+    setLessonMailDispatchMode('')
     setLessonMailDispatchMessage('')
     setLessonMailPreviewTab('attachment')
     setLessonMailPreviewConfirmed(false)
@@ -1833,7 +1837,7 @@ export default function App() {
     resetLessonMailPdfPreview()
   }
 
-  async function sendLessonReportEmail(report) {
+  async function sendLessonReportEmail(report, deliveryMode = 'broadcast') {
     if (!identity || !report || !lessonMailPreviewConfirmed || lessonMailPdfPreview.status !== 'ready') return
     if (report.teacherName !== identity) {
       setLessonMailDispatchStatus('error')
@@ -1850,15 +1854,18 @@ export default function App() {
       setLessonMailDispatchMessage('共有データの保存完了後に送信してください。')
       return
     }
-    const recipientCount = Math.max(0, teachers.length - 1)
+    const senderTest = deliveryMode === 'sender_test'
+    const recipientCount = senderTest ? 1 : Math.max(0, teachers.length - 1)
     const draft = lessonReportMailDraft(report)
+    setLessonMailDispatchMode(deliveryMode)
     setLessonMailDispatchStatus('sending')
-    setLessonMailDispatchMessage('授業報告を送信しています...')
+    setLessonMailDispatchMessage(senderTest ? '本人宛てのテストメールを送信しています...' : '授業報告を送信しています...')
     const { data, error } = await supabase.functions.invoke('send-lesson-report-email', {
       body: {
         monthKey: report.monthKey || monthKey,
         reportId: report.id,
         senderName: identity,
+        deliveryMode,
         pdfFilename: lessonMailPdfPreview.filename,
         pdfBase64: lessonMailPdfPreview.base64,
       },
@@ -1886,7 +1893,9 @@ export default function App() {
       return
     }
     setLessonMailDispatchStatus('sent')
-    setLessonMailDispatchMessage(`${data.recipientCount ?? recipientCount}名へ授業報告を送信しました。`)
+    setLessonMailDispatchMessage(senderTest
+      ? '本人の登録メールアドレスだけにテスト送信しました。'
+      : `${data.recipientCount ?? recipientCount}名へ授業報告を送信しました。`)
   }
 
   // ── Archive ───────────────────────────────────────────────────────────────────
@@ -3930,7 +3939,9 @@ export default function App() {
     const recipientNames = teachers.filter((teacher) => teacher.name !== identity).map((teacher) => teacher.name)
     const reportComplete = report.status === '完了' && !!report.updatedAt
     const senderMatches = report.teacherName === identity
-    const canSend = reportComplete && senderMatches && cloudStatus === 'ready' && lessonMailPreviewConfirmed && lessonMailPdfPreview.status === 'ready' && lessonMailDispatchStatus !== 'sent'
+    const readyToSend = reportComplete && senderMatches && cloudStatus === 'ready' && lessonMailPreviewConfirmed && lessonMailPdfPreview.status === 'ready'
+    const canSend = readyToSend && !(lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'broadcast')
+    const canTestToSelf = isAdmin && readyToSend && !(lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'sender_test')
     return (
       <div className="mail-preview-backdrop" role="presentation" onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeLessonReportMail()
@@ -3979,9 +3990,24 @@ export default function App() {
           {lessonMailDispatchMessage ? <p className={`inline-message ${lessonMailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{lessonMailDispatchMessage}</p> : null}
           <div className="schedule-mail-actions">
             <button type="button" className="ghost-btn" onClick={closeLessonReportMail} disabled={lessonMailDispatchStatus === 'sending'}>戻る</button>
-            <button type="button" className="primary-btn" onClick={() => sendLessonReportEmail(report)} disabled={!canSend || lessonMailDispatchStatus === 'sending'}>
-              {lessonMailDispatchStatus === 'sending' ? '送信中...' : lessonMailDispatchStatus === 'sent' ? '送信済み' : 'この内容で送信'}
-            </button>
+            <div className="schedule-mail-send-actions">
+              {isAdmin ? (
+                <button type="button" className="ghost-btn" onClick={() => sendLessonReportEmail(report, 'sender_test')} disabled={!canTestToSelf || lessonMailDispatchStatus === 'sending'}>
+                  {lessonMailDispatchStatus === 'sending' && lessonMailDispatchMode === 'sender_test'
+                    ? 'テスト送信中...'
+                    : lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'sender_test'
+                      ? '本人へ送信済み'
+                      : '本人だけにテスト送信'}
+                </button>
+              ) : null}
+              <button type="button" className="primary-btn" onClick={() => sendLessonReportEmail(report)} disabled={!canSend || lessonMailDispatchStatus === 'sending'}>
+                {lessonMailDispatchStatus === 'sending' && lessonMailDispatchMode === 'broadcast'
+                  ? '送信中...'
+                  : lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'broadcast'
+                    ? '送信済み'
+                    : 'この内容で送信'}
+              </button>
+            </div>
           </div>
         </section>
       </div>

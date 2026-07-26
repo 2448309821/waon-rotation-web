@@ -62,7 +62,14 @@ Deno.serve(async (request) => {
   const origin = request.headers.get('origin') || ''
   if (origin && !allowedOrigins.has(origin)) return response(request, { sent: false, error: 'origin_not_allowed' }, 403)
 
-  let payload: { monthKey?: string; reportId?: string; senderName?: string; pdfFilename?: string; pdfBase64?: string }
+  let payload: {
+    monthKey?: string
+    reportId?: string
+    senderName?: string
+    pdfFilename?: string
+    pdfBase64?: string
+    deliveryMode?: string
+  }
   try {
     payload = await request.json()
   } catch {
@@ -71,6 +78,7 @@ Deno.serve(async (request) => {
   const monthKey = String(payload.monthKey || '')
   const reportId = String(payload.reportId || '')
   const senderName = String(payload.senderName || '').trim()
+  const deliveryMode = payload.deliveryMode === 'sender_test' ? 'sender_test' : 'broadcast'
   if (!/^\d{4}-\d{1,2}$/.test(monthKey) || !/^\d{1,2}\/\d{1,2}__.{1,40}$/.test(reportId)) {
     return response(request, { sent: false, error: 'invalid_report_id' }, 400)
   }
@@ -87,8 +95,11 @@ Deno.serve(async (request) => {
   }
 
   const senderEmail = recipientMap[senderName]
-  const recipientEmails = Object.entries(recipientMap).filter(([name]) => name !== senderName).map(([, email]) => email)
-  if (!senderEmail || recipientEmails.length !== Object.keys(recipientMap).length - 1) {
+  if (!senderEmail) return response(request, { sent: false, error: 'invalid_sender' }, 400)
+  const recipientEmails = deliveryMode === 'sender_test'
+    ? [senderEmail]
+    : Object.entries(recipientMap).filter(([name]) => name !== senderName).map(([, email]) => email)
+  if (deliveryMode === 'broadcast' && recipientEmails.length !== Object.keys(recipientMap).length - 1) {
     return response(request, { sent: false, error: 'invalid_sender' }, 400)
   }
 
@@ -127,7 +138,7 @@ Deno.serve(async (request) => {
   const { subject, text, html, attachments } = mailPackage
   const attachmentHashInput = attachments.map((attachment) => `${attachment.filename}\n${attachment.mimeType}\n${attachment.base64}`).join('\n')
   const contentHash = await sha256(`${senderName}\n${recipientEmails.slice().sort().join(',')}\n${subject}\n${text}\n${html}\n${attachmentHashInput}`)
-  const dispatchKey = await sha256(`wawon-lesson-report-email:${monthKey}:${reportId}:${report.updatedAt}`)
+  const dispatchKey = await sha256(`wawon-lesson-report-email:${deliveryMode}:${monthKey}:${reportId}:${report.updatedAt}`)
   const { data: existing, error: existingError } = await service
     .from('lesson_report_email_dispatches')
     .select('status, attempt_count, updated_at')
@@ -182,6 +193,7 @@ Deno.serve(async (request) => {
         token: webhookToken,
         to: recipientEmails,
         excludedEmail: senderEmail,
+        deliveryMode,
         senderName,
         subject,
         text,
@@ -201,6 +213,7 @@ Deno.serve(async (request) => {
     return response(request, {
       sent: true,
       senderName,
+      deliveryMode,
       recipientCount: recipientEmails.length,
       report: { dateText: report.dateText, className: report.className },
     })
