@@ -26,7 +26,10 @@ function doPost(e) {
   const html = String(payload.html || '').trim();
   const attachments = buildAttachments_(payload.attachments);
   const dispatchKey = String(payload.dispatchKey || '').trim().toLowerCase();
-  const expectedRecipients = allowedRecipients.filter(function (email) { return email !== excludedEmail; }).sort();
+  const deliveryMode = payload.deliveryMode === 'sender_test' ? 'sender_test' : 'broadcast';
+  const expectedRecipients = deliveryMode === 'sender_test'
+    ? [excludedEmail]
+    : allowedRecipients.filter(function (email) { return email !== excludedEmail; }).sort();
   const sortedRecipients = recipients.slice().sort();
   if (!excludedEmail || allowedRecipients.indexOf(excludedEmail) === -1) return json_({ success: false, sent: false, error: 'invalid_sender' });
   if (JSON.stringify(sortedRecipients) !== JSON.stringify(expectedRecipients)) return json_({ success: false, sent: false, error: 'invalid_recipients' });

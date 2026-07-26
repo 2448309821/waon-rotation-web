@@ -2355,6 +2355,12 @@ textarea::placeholder {
   gap: 2px;
 }
 
+.schedule-mail-send-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .schedule-mail-head span,
 .schedule-mail-meta dt {
   color: var(--muted);
@@ -4188,6 +4194,10 @@ textarea::placeholder {
   .mail-preview-dialog .schedule-mail-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .schedule-mail-send-actions {
+    display: grid;
   }
 
   .lesson-mail-attachment {
