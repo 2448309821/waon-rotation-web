@@ -62,6 +62,7 @@ const BRAND_ICONS = [
   { id: 'rainbow-book', label: 'みんな', src: waonIcon6 },
 ]
 const SEEDED_MONTH_KEY = '2026-5'
+const REPEATED_CLASS_RULE_START_MONTH = '2026-8'
 const SEEDED_SESSION_TYPES = {
   [SEEDED_MONTH_KEY]: {
     '5/2': 'holiday',
@@ -130,7 +131,11 @@ function buildFallbackState() {
     allClasses: ALL_CLASSES,
     defaultClasses: DEFAULT_CLASSES,
     statusOptions: DEFAULT_STATUS_OPTIONS,
-    specialRules: { wangSplit: true, randomSeed: Math.random().toString(36).slice(2) },
+    specialRules: {
+      wangSplit: true,
+      randomSeed: Math.random().toString(36).slice(2),
+      avoidRepeatedClassesFromMonth: REPEATED_CLASS_RULE_START_MONTH,
+    },
     teachers: DEFAULT_TEACHERS,
     currentTeacher: DEFAULT_TEACHERS[0].name,
     sessionTypesByMonth: SEEDED_SESSION_TYPES,
@@ -167,7 +172,10 @@ function mergeState(saved) {
     allClasses: saved.allClasses ?? ALL_CLASSES,
     defaultClasses: saved.defaultClasses ?? DEFAULT_CLASSES,
     statusOptions: mergedStatusOptions,
-    specialRules: saved.specialRules ?? { wangSplit: true, randomSeed: Math.random().toString(36).slice(2) },
+    specialRules: {
+      avoidRepeatedClassesFromMonth: REPEATED_CLASS_RULE_START_MONTH,
+      ...(saved.specialRules ?? { wangSplit: true, randomSeed: Math.random().toString(36).slice(2) }),
+    },
     teachers: saved.teachers ?? DEFAULT_TEACHERS,
     currentTeacher: saved.currentTeacher ?? fallback.currentTeacher,
     sessionTypesByMonth: { ...SEEDED_SESSION_TYPES, ...(saved.sessionTypesByMonth ?? {}) },
@@ -1157,7 +1165,14 @@ export default function App() {
 
   function specialRulesForMonthKey(targetMonthKey) {
     const monthSeed = specialRules.randomSeedByMonth?.[targetMonthKey]
-    return monthSeed ? { ...specialRules, randomSeed: monthSeed } : specialRules
+    const [targetYear, targetMonth] = targetMonthKey.split('-').map(Number)
+    const [startYear, startMonth] = (specialRules.avoidRepeatedClassesFromMonth ?? REPEATED_CLASS_RULE_START_MONTH).split('-').map(Number)
+    const avoidRepeatedClasses = (targetYear * 12 + targetMonth) >= (startYear * 12 + startMonth)
+    return {
+      ...specialRules,
+      avoidRepeatedClasses,
+      ...(monthSeed ? { randomSeed: monthSeed } : {}),
+    }
   }
 
   const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, sessionSpecialNotesByMonth, defaultClasses, allClasses, effectiveSpecialRules)
@@ -2981,18 +2996,20 @@ export default function App() {
               </div>
             </main>
           </div>
-          <label className="mail-preview-confirm">
-            <input type="checkbox" checked={mailPreviewConfirmed} onChange={(event) => setMailPreviewConfirmed(event.target.checked)} disabled={mailDispatchStatus === 'sending' || mailPdfPreview.status !== 'ready'} />
-            <span><strong>送信内容を確認しました</strong><small>宛先、表、特別連絡、状態記号と実際のPDFを確認しました。送信時は同じ内容のWordも添付されます。</small></span>
-          </label>
-          {!isMonthLocked ? <p className="inline-message is-warning">月を確定すると送信できます。</p> : null}
-          {mailPdfPreview.status === 'loading' ? <p className="inline-message">PDFを作成しています...</p> : null}
-          {mailDispatchMessage ? <p className={`inline-message ${mailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{mailDispatchMessage}</p> : null}
-          <div className="schedule-mail-actions">
-            <button type="button" className="ghost-btn" onClick={closeScheduleMailPanel} disabled={mailDispatchStatus === 'sending'}>戻る</button>
-            <button type="button" className="primary-btn" onClick={sendScheduleEmail} disabled={!isMonthLocked || !mailPreviewConfirmed || mailPdfPreview.status !== 'ready' || ['sending', 'sent'].includes(mailDispatchStatus)}>
-              {mailDispatchStatus === 'sending' ? '送信中...' : mailDispatchStatus === 'sent' ? '送信済み' : 'この内容で送信'}
-            </button>
+          <div className="mail-preview-footer">
+            <label className="mail-preview-confirm">
+              <input type="checkbox" checked={mailPreviewConfirmed} onChange={(event) => setMailPreviewConfirmed(event.target.checked)} disabled={mailDispatchStatus === 'sending' || mailPdfPreview.status !== 'ready'} />
+              <span><strong>送信内容を確認しました</strong><small>宛先、表、特別連絡、状態記号と実際のPDFを確認しました。送信時は同じ内容のWordも添付されます。</small></span>
+            </label>
+            {!isMonthLocked ? <p className="inline-message is-warning">月を確定すると送信できます。</p> : null}
+            {mailPdfPreview.status === 'loading' ? <p className="inline-message">PDFを作成しています...</p> : null}
+            {mailDispatchMessage ? <p className={`inline-message ${mailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{mailDispatchMessage}</p> : null}
+            <div className="schedule-mail-actions">
+              <button type="button" className="ghost-btn" onClick={closeScheduleMailPanel} disabled={mailDispatchStatus === 'sending'}>戻る</button>
+              <button type="button" className="primary-btn" onClick={sendScheduleEmail} disabled={!isMonthLocked || !mailPreviewConfirmed || mailPdfPreview.status !== 'ready' || ['sending', 'sent'].includes(mailDispatchStatus)}>
+                {mailDispatchStatus === 'sending' ? '送信中...' : mailDispatchStatus === 'sent' ? '送信済み' : 'この内容で送信'}
+              </button>
+            </div>
           </div>
         </section>
       </div>
@@ -3979,34 +3996,36 @@ export default function App() {
               </div>
             </main>
           </div>
-          <label className="mail-preview-confirm">
-            <input type="checkbox" checked={lessonMailPreviewConfirmed} onChange={(event) => setLessonMailPreviewConfirmed(event.target.checked)} disabled={lessonMailDispatchStatus === 'sending' || lessonMailPdfPreview.status !== 'ready'} />
-            <span><strong>送信内容を確認しました</strong><small>宛先、本文、日付、クラス、担当者と実際のPDFを確認しました。送信時は同じ内容のWordも添付されます。</small></span>
-          </label>
-          {!senderMatches ? <p className="inline-message is-warning">担当者「{report.teacherName}」本人の名前で開いている時だけ送信できます。</p> : null}
-          {!reportComplete ? <p className="inline-message is-warning">単元・授業内容・申し送りを入力し、保存が完了すると送信できます。</p> : null}
-          {cloudStatus !== 'ready' ? <p className="inline-message is-warning">共有データを保存しています。完了までお待ちください。</p> : null}
-          {lessonMailPdfPreview.status === 'loading' ? <p className="inline-message">PDFを作成しています...</p> : null}
-          {lessonMailDispatchMessage ? <p className={`inline-message ${lessonMailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{lessonMailDispatchMessage}</p> : null}
-          <div className="schedule-mail-actions">
-            <button type="button" className="ghost-btn" onClick={closeLessonReportMail} disabled={lessonMailDispatchStatus === 'sending'}>戻る</button>
-            <div className="schedule-mail-send-actions">
-              {isAdmin ? (
-                <button type="button" className="ghost-btn" onClick={() => sendLessonReportEmail(report, 'sender_test')} disabled={!canTestToSelf || lessonMailDispatchStatus === 'sending'}>
-                  {lessonMailDispatchStatus === 'sending' && lessonMailDispatchMode === 'sender_test'
-                    ? 'テスト送信中...'
-                    : lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'sender_test'
-                      ? '本人へ送信済み'
-                      : '本人だけにテスト送信'}
+          <div className="mail-preview-footer">
+            <label className="mail-preview-confirm">
+              <input type="checkbox" checked={lessonMailPreviewConfirmed} onChange={(event) => setLessonMailPreviewConfirmed(event.target.checked)} disabled={lessonMailDispatchStatus === 'sending' || lessonMailPdfPreview.status !== 'ready'} />
+              <span><strong>送信内容を確認しました</strong><small>宛先、本文、日付、クラス、担当者と実際のPDFを確認しました。送信時は同じ内容のWordも添付されます。</small></span>
+            </label>
+            {!senderMatches ? <p className="inline-message is-warning">担当者「{report.teacherName}」本人の名前で開いている時だけ送信できます。</p> : null}
+            {!reportComplete ? <p className="inline-message is-warning">単元・授業内容・申し送りを入力し、保存が完了すると送信できます。</p> : null}
+            {cloudStatus !== 'ready' ? <p className="inline-message is-warning">共有データを保存しています。完了までお待ちください。</p> : null}
+            {lessonMailPdfPreview.status === 'loading' ? <p className="inline-message">PDFを作成しています...</p> : null}
+            {lessonMailDispatchMessage ? <p className={`inline-message ${lessonMailDispatchStatus === 'error' ? 'is-warning' : ''}`}>{lessonMailDispatchMessage}</p> : null}
+            <div className="schedule-mail-actions">
+              <button type="button" className="ghost-btn" onClick={closeLessonReportMail} disabled={lessonMailDispatchStatus === 'sending'}>戻る</button>
+              <div className="schedule-mail-send-actions">
+                {isAdmin ? (
+                  <button type="button" className="ghost-btn" onClick={() => sendLessonReportEmail(report, 'sender_test')} disabled={!canTestToSelf || lessonMailDispatchStatus === 'sending'}>
+                    {lessonMailDispatchStatus === 'sending' && lessonMailDispatchMode === 'sender_test'
+                      ? 'テスト送信中...'
+                      : lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'sender_test'
+                        ? '本人へ送信済み'
+                        : '本人だけにテスト送信'}
+                  </button>
+                ) : null}
+                <button type="button" className="primary-btn" onClick={() => sendLessonReportEmail(report)} disabled={!canSend || lessonMailDispatchStatus === 'sending'}>
+                  {lessonMailDispatchStatus === 'sending' && lessonMailDispatchMode === 'broadcast'
+                    ? '送信中...'
+                    : lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'broadcast'
+                      ? '送信済み'
+                      : 'この内容で送信'}
                 </button>
-              ) : null}
-              <button type="button" className="primary-btn" onClick={() => sendLessonReportEmail(report)} disabled={!canSend || lessonMailDispatchStatus === 'sending'}>
-                {lessonMailDispatchStatus === 'sending' && lessonMailDispatchMode === 'broadcast'
-                  ? '送信中...'
-                  : lessonMailDispatchStatus === 'sent' && lessonMailDispatchMode === 'broadcast'
-                    ? '送信済み'
-                    : 'この内容で送信'}
-              </button>
+              </div>
             </div>
           </div>
         </section>
@@ -4251,7 +4270,7 @@ export default function App() {
     return schedule.find((session) => !session.closed) ?? schedule[0]
   }
 
-  function MobileHeader({ title, subtitle, showMonth = false, showDisplay = false }) {
+  function MobileHeader({ title, subtitle, showMonth = false }) {
     return (
       <header className="mobile-header">
         <div className="mobile-title-row">
@@ -4266,8 +4285,6 @@ export default function App() {
           <strong>{identity}</strong>
           <span>{isAdmin ? '管理者' : '本人'}</span>
         </button>
-        {showDisplay ? <UiModeSwitch compact /> : null}
-        {showDisplay ? <BrandIconPicker value={activeBrandIconId} onChange={setBrandIcon} compact /> : null}
         {showMonth ? <MobileMonthControls /> : null}
       </header>
     )
@@ -4289,7 +4306,7 @@ export default function App() {
       : 0
     return (
       <section className="mobile-screen">
-        <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" showMonth showDisplay />
+        <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" showMonth />
         <div className="mobile-metrics">
           <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${sessionTypeLabel(nextSession)}` : 'なし'}</strong></div>
           <div><span>出席入力</span><strong>{mobileAttendanceDoneCount}/{teachers.length}</strong></div>
@@ -4743,14 +4760,11 @@ export default function App() {
           <div className="mobile-section-title">
             <h2>記録を選ぶ</h2>
           </div>
-          <select value={selectedLessonGroup?.sessionKey ?? ''} onChange={(e) => {
+          <select aria-label="授業日を選ぶ" value={selectedLessonGroup?.sessionKey ?? ''} onChange={(e) => {
             const group = lessonReportGroups.find((item) => item.sessionKey === e.target.value)
             setActiveLessonReportId(group?.items[0]?.id ?? '')
           }}>
             {lessonReportGroups.map((group) => <option key={group.sessionKey} value={group.sessionKey}>{group.label}</option>)}
-          </select>
-          <select value={selectedLessonReportId} onChange={(e) => setActiveLessonReportId(e.target.value)}>
-            {(selectedLessonGroup?.items ?? []).map((option) => <option key={option.id} value={option.id}>{option.className} / {option.teacherName}</option>)}
           </select>
           <div className="mobile-lesson-sublist">
             {(selectedLessonGroup?.items ?? []).map((option) => (
@@ -4772,10 +4786,14 @@ export default function App() {
           {LessonReportPreview({ report: selectedLessonReport })}
         </section>
         <div className="mobile-lesson-actions">
-          <button type="button" onClick={openLessonReportMail} disabled={!selectedLessonReport}>メール送信</button>
-          <button type="button" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button>
-          <button type="button" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button>
-          <button type="button" disabled={!selectedLessonReport}>保存済み</button>
+          <button type="button" className="mobile-primary-action" onClick={openLessonReportMail} disabled={!selectedLessonReport}>メール送信</button>
+          <details className="mobile-lesson-output-menu">
+            <summary>ファイル出力</summary>
+            <div>
+              <button type="button" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX</button>
+              <button type="button" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF</button>
+            </div>
+          </details>
         </div>
         {LessonReportMailDialog({ report: selectedLessonReport })}
       </section>

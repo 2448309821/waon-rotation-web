@@ -141,9 +141,25 @@ function countLimitOverage(chosen, assignmentCounts) {
   }, 0)
 }
 
-function scoreAssignment(chosen, allTeachers, meeting, assignmentCounts = {}) {
+function countRepeatedClasses(assignment, classAssignmentCounts) {
+  return Object.entries(assignment).reduce(
+    (sum, [className, teacherName]) => sum + (classAssignmentCounts[teacherName]?.[className] ?? 0),
+    0,
+  )
+}
+
+function countPreviousSessionRepeats(assignment, previousAssignments) {
+  return Object.entries(assignment).reduce(
+    (sum, [className, teacherName]) => sum + (previousAssignments[className] === teacherName ? 1 : 0),
+    0,
+  )
+}
+
+function scoreAssignment(chosen, assignment, allTeachers, meeting, assignmentCounts = {}, classAssignmentCounts = {}, previousAssignments = {}) {
   return [
     -countLimitOverage(chosen, assignmentCounts),
+    -countPreviousSessionRepeats(assignment, previousAssignments),
+    -countRepeatedClasses(assignment, classAssignmentCounts),
     -chosen.reduce((s, t) => s + (assignmentCounts[t.name] ?? 0), 0),
     chosen.filter(t => t.remote && meeting).length,
     -chosen.filter(t => t.skipMeeting && meeting).length,
@@ -180,7 +196,7 @@ function seededRandom(seed) {
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646 }
 }
 
-function tryAssign(available, classes, classRules, allTeachers, meeting, random, seed, assignmentCounts = {}) {
+function tryAssign(available, classes, classRules, allTeachers, meeting, random, seed, assignmentCounts = {}, classAssignmentCounts = {}, previousAssignments = {}) {
   if (available.length < classes.length) return null
   if (!random) {
     const sorted = [...available].sort((a, b) => comparePriority(a, b, allTeachers, meeting))
@@ -189,7 +205,7 @@ function tryAssign(available, classes, classRules, allTeachers, meeting, random,
       for (const ordered of permute(chosen)) {
         const assignment = Object.fromEntries(classes.map((cls, i) => [cls, ordered[i].name]))
         if (!classes.every(cls => classRules[cls]?.has(assignment[cls]))) continue
-        const score = scoreAssignment(chosen, allTeachers, meeting, assignmentCounts)
+        const score = scoreAssignment(chosen, assignment, allTeachers, meeting, assignmentCounts, classAssignmentCounts, previousAssignments)
         if (!bestScore || compareScore(bestScore, score) < 0) { best = assignment; bestScore = score }
       }
     }
@@ -204,7 +220,7 @@ function tryAssign(available, classes, classRules, allTeachers, meeting, random,
     for (const ordered of permute(chosen)) {
       const assignment = Object.fromEntries(classes.map((cls, i) => [cls, ordered[i].name]))
       if (!classes.every(cls => classRules[cls]?.has(assignment[cls]))) continue
-      const score = scoreAssignment(chosen, allTeachers, meeting, assignmentCounts)
+      const score = scoreAssignment(chosen, assignment, allTeachers, meeting, assignmentCounts, classAssignmentCounts, previousAssignments)
       if (!bestScore || compareScore(bestScore, score) < 0) {
         bestScore = score
         validAssignments.length = 0
@@ -217,7 +233,7 @@ function tryAssign(available, classes, classRules, allTeachers, meeting, random,
   return validAssignments[pick]
 }
 
-function tryAssignWithinMonthlyLimit(available, classes, classRules, allTeachers, meeting, random, seed, assignmentCounts = {}) {
+function tryAssignWithinMonthlyLimit(available, classes, classRules, allTeachers, meeting, random, seed, assignmentCounts = {}, classAssignmentCounts = {}, previousAssignments = {}) {
   return tryAssign(
     available.filter(t => isUnderMonthlyLimit(t, assignmentCounts)),
     classes,
@@ -227,6 +243,8 @@ function tryAssignWithinMonthlyLimit(available, classes, classRules, allTeachers
     random,
     seed,
     assignmentCounts,
+    classAssignmentCounts,
+    previousAssignments,
   )
 }
 
@@ -237,8 +255,11 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
   // Map status id → behavior; unknown ids treated as 'no'
   const behaviorOf = Object.fromEntries(statusOptions.map(o => [o.id, o.behavior]))
   const random = specialRules.random === true
+  const avoidRepeatedClasses = specialRules.avoidRepeatedClasses === true
   const seed = specialRules.randomSeed ?? `${Date.now().toString(36)}`
   const assignmentCounts = {}
+  const classAssignmentCounts = {}
+  let previousAssignments = {}
 
   return sessions.map(session => {
     if (session.closed) {
@@ -252,6 +273,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     }
 
     const manualAssignments = session.manualAssignments ?? {}
+    const manuallyAssignedTeachers = new Set(Object.values(manualAssignments))
     const requiredClasses = session.requiredClasses ?? []
 
     // Apply manual assignments first
@@ -263,14 +285,14 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     const getStatus = t =>
       attendanceByTeacher[t.name]?.[session.key] ?? t.defaultStatus ?? 'no'
 
-    const yesTeachers            = teachers.filter(t => behaviorOf[getStatus(t)] === 'yes')
-    const maybeTeachers          = teachers.filter(t => ['maybe', 'maybe_meeting'].includes(behaviorOf[getStatus(t)]))
+    const yesTeachers            = teachers.filter(t => behaviorOf[getStatus(t)] === 'yes' && !manuallyAssignedTeachers.has(t.name))
+    const maybeTeachers          = teachers.filter(t => ['maybe', 'maybe_meeting'].includes(behaviorOf[getStatus(t)]) && !manuallyAssignedTeachers.has(t.name))
     const meetingOnlyTeachers    = teachers.filter(t => behaviorOf[getStatus(t)] === 'meeting_only')
     const maybeMeetingTeachers   = teachers.filter(t => behaviorOf[getStatus(t)] === 'maybe_meeting')
 
     const sessionSeed = `${seed}:${session.key}:${remainingClasses.join('|')}`
     let selectedMaybeTeachers = []
-    let autoAssignments = remainingClasses.length > 0 ? tryAssignWithinMonthlyLimit(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes:within-limit`, assignmentCounts) : {}
+    let autoAssignments = remainingClasses.length > 0 ? tryAssignWithinMonthlyLimit(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes:within-limit`, assignmentCounts, classAssignmentCounts, previousAssignments) : {}
 
     if (!autoAssignments) {
       const sortedMaybe = [...maybeTeachers].sort((a, b) => comparePriority(a, b, teachers, session.meeting))
@@ -278,7 +300,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
         selectedMaybeTeachers = [...selectedMaybeTeachers, t]
         autoAssignments = remainingClasses.length > 0 ? tryAssignWithinMonthlyLimit(
           [...yesTeachers, ...selectedMaybeTeachers],
-          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts,
+          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts, classAssignmentCounts, previousAssignments,
         ) : {}
         if (autoAssignments) break
       }
@@ -286,7 +308,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
 
     if (!autoAssignments) {
       selectedMaybeTeachers = []
-      autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes:limit-fallback`, assignmentCounts) : {}
+      autoAssignments = remainingClasses.length > 0 ? tryAssign(yesTeachers, remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:yes:limit-fallback`, assignmentCounts, classAssignmentCounts, previousAssignments) : {}
     }
 
     if (!autoAssignments) {
@@ -295,7 +317,7 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
         selectedMaybeTeachers = [...selectedMaybeTeachers, t]
         autoAssignments = remainingClasses.length > 0 ? tryAssign(
           [...yesTeachers, ...selectedMaybeTeachers],
-          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe-limit-fallback:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts,
+          remainingClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:maybe-limit-fallback:${selectedMaybeTeachers.map((teacher) => teacher.name).join('|')}`, assignmentCounts, classAssignmentCounts, previousAssignments,
         ) : {}
         if (autoAssignments) break
       }
@@ -312,12 +334,12 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
       const pool = [...yesTeachers, ...selectedMaybeTeachers]
       usedClasses = []
       for (const cls of remainingClasses) {
-        if (tryAssignWithinMonthlyLimit(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}:within-limit`, assignmentCounts)
-          || tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}`, assignmentCounts))
+        if (tryAssignWithinMonthlyLimit(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}:within-limit`, assignmentCounts, classAssignmentCounts, previousAssignments)
+          || tryAssign(pool, [...usedClasses, cls], classRules, teachers, session.meeting, random, `${sessionSeed}:partial:${cls}`, assignmentCounts, classAssignmentCounts, previousAssignments))
           usedClasses.push(cls)
       }
-      autoAssignments = tryAssignWithinMonthlyLimit(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback:within-limit`, assignmentCounts)
-        ?? tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback`, assignmentCounts)
+      autoAssignments = tryAssignWithinMonthlyLimit(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback:within-limit`, assignmentCounts, classAssignmentCounts, previousAssignments)
+        ?? tryAssign(pool, usedClasses, classRules, teachers, session.meeting, random, `${sessionSeed}:fallback`, assignmentCounts, classAssignmentCounts, previousAssignments)
         ?? {}
       assignments = { ...assignments, ...autoAssignments }
       unassignedClasses = remainingClasses.filter(c => !usedClasses.includes(c))
@@ -353,6 +375,13 @@ export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOpt
     selectedTeachers.forEach(name => {
       assignmentCounts[name] = (assignmentCounts[name] ?? 0) + 1
     })
+    if (avoidRepeatedClasses) {
+      Object.entries(assignments).forEach(([className, teacherName]) => {
+        classAssignmentCounts[teacherName] = classAssignmentCounts[teacherName] ?? {}
+        classAssignmentCounts[teacherName][className] = (classAssignmentCounts[teacherName][className] ?? 0) + 1
+      })
+      previousAssignments = { ...assignments }
+    }
 
     return {
       ...session,
