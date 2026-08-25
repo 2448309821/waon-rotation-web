@@ -16,17 +16,21 @@ function lessonLines(value) {
 }
 
 export function formatLessonContentLines(value) {
-  return lessonLines(value).map((text, index) => ({
+  const lines = lessonLines(value)
+  const usesExplicitMarkers = lines.some(hasExplicitLessonMarker)
+  return lines.map((text, index) => ({
     text,
     explicit: hasExplicitLessonMarker(text),
-    display: hasExplicitLessonMarker(text) ? text : `${index + 1}.  ${text}`,
+    display: usesExplicitMarkers ? text : `${index + 1}.  ${text}`,
   }))
 }
 
 export function formatLessonHandoffLines(value) {
-  return lessonLines(value).map((text) => ({
+  const lines = lessonLines(value)
+  const usesExplicitMarkers = lines.some(hasExplicitLessonMarker)
+  return lines.map((text) => ({
     text,
     explicit: hasExplicitLessonMarker(text),
-    display: hasExplicitLessonMarker(text) ? text : `●  ${text}`,
+    display: usesExplicitMarkers ? text : `●  ${text}`,
   }))
 }

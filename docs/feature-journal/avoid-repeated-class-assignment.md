@@ -21,7 +21,9 @@
 | --- | --- |
 | `web/src/schedule.js` | Assignment scoring and monthly class history. |
 | `web/src/schedule.test.js` | Regression coverage for avoidable and unavoidable repetition. |
-| `web/src/App.jsx` | Enables the new preference from August 2026 onward so older locked months stay unchanged. |
+| `web/src/App.jsx` | Enables the new preference and treats locked monthly assignments as immutable. |
+| `web/src/lockedAssignments.js` | Restores legacy archived assignments and merges later manual exchanges. |
+| `web/src/lockedAssignments.test.js` | Regression coverage for locked-month recovery. |
 | `web/package.json` | Node test command. |
 
 ## Iterations
@@ -46,10 +48,16 @@
 - Result: the live August input assigns 8/29 `きく` to Okazaki instead of repeating Okamoto's 8/22 `きく`; all classes remain assigned.
 - Next: user confirmation before upload.
 
+### 2026-08-22 - Make confirmed schedules immutable
+- Change: confirmed months now restore assignments from the archived table, and newly confirmed months store an explicit assignment snapshot.
+- Reason: a scheduling-rule update recalculated August after it had already been confirmed, replacing a teacher-to-teacher exchange on 8/29.
+- Evidence: the shared state marked August as locked but the rendered table still called `buildSchedule` with the current random rules; the archived record contained only Markdown.
+- Result: future rule changes and re-runs cannot alter confirmed assignments. The current 8/29 exchange was restored as Okazaki = `きく`, Okamoto = `さくら`, Shibata = `わかば`, and Monma = `入門`.
+
 ## Verification
 | Check | Result | Notes |
 | --- | --- | --- |
-| `npm test` | pass | 4 tests cover avoidable repetition, unavoidable fallback, previous-session tie-breaking, and manual-assignment protection. |
+| `npm test` | pass | 6 tests cover scheduling behavior and locked-month recovery. |
 | Live August recomputation | pass | 8/29 no longer repeats Okamoto on `きく`; May, June, and July have zero assignment changes. |
 | `npm run build` | pass | Vite transformed 461 modules and completed successfully. |
 | `git diff --check` | pass | No whitespace errors. |

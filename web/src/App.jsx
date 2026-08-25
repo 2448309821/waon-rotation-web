@@ -29,6 +29,10 @@ import {
   formatLessonContentLines,
   formatLessonHandoffLines,
 } from './lessonReportFormat'
+import {
+  getArchivedAssignments,
+  mergeAssignmentOverrides,
+} from './lockedAssignments'
 
 function AutoTextarea({ value, onChange, rows = 3, style, ...props }) {
   const ref = useRef(null)
@@ -1175,7 +1179,21 @@ export default function App() {
     }
   }
 
-  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth, sessionSpecialNotesByMonth, defaultClasses, allClasses, effectiveSpecialRules)
+  function manualAssignmentsForMonthKey(targetMonthKey) {
+    const currentManualAssignments = sessionManualByMonth[targetMonthKey] ?? {}
+    if (!lockedMonths?.[targetMonthKey]) return sessionManualByMonth
+
+    const archivedAssignments = getArchivedAssignments(
+      archivedSchedules?.[targetMonthKey],
+      allClasses,
+    )
+    return {
+      ...sessionManualByMonth,
+      [targetMonthKey]: mergeAssignmentOverrides(archivedAssignments, currentManualAssignments),
+    }
+  }
+
+  const sessions = generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, manualAssignmentsForMonthKey(monthKey), sessionSpecialNotesByMonth, defaultClasses, allClasses, effectiveSpecialRules)
 
   let schedule = []
   try {
@@ -1476,6 +1494,9 @@ export default function App() {
         [monthKey]: {
           savedAt: new Date().toISOString(),
           markdown,
+          assignmentsBySession: Object.fromEntries(
+            schedule.map((session) => [session.key, { ...(session.assignments ?? {}) }]),
+          ),
           label: `${year}年${month}月`,
         },
       },
@@ -2239,8 +2260,7 @@ export default function App() {
   function handleStatusChange(sessionKey, value) {
     const targetTeacher = effectiveTeacher
     if (!targetTeacher) return
-    // Non-admin cannot edit when month is locked
-    if (!isAdmin && isMonthLocked) return
+    if (isMonthLocked) return
     setState((s) => {
       const currentMonth = s.attendanceByMonth[monthKey] ?? {}
       return {
@@ -4177,7 +4197,7 @@ export default function App() {
       targetMonth,
       sessionTypesByMonth,
       sessionClassesByMonth,
-      sessionManualByMonth,
+      manualAssignmentsForMonthKey(targetMonthKey),
       sessionSpecialNotesByMonth,
       defaultClasses,
       allClasses,
