@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildSchedule, teachersForMonth } from './schedule.js'
+import { DEFAULT_TEACHERS, buildSchedule, teachersForMonth } from './schedule.js'
 
 const yesStatus = [{ id: 'yes', label: '○', behavior: 'yes' }]
 
@@ -99,6 +99,10 @@ test('an automatic assignment does not give a second class to a manually assigne
 })
 
 test('a December joiner is absent from earlier months and waits for declared attendance', () => {
+  assert.deepEqual(DEFAULT_TEACHERS.at(-1), {
+    name: 'インシカン', remote: false, skipMeeting: false,
+    defaultStatus: 'no', activeFromMonth: '2026-12', classes: ['入門'],
+  })
   const teachers = [
     { name: 'New', classes: ['入門'], activeFromMonth: '2026-12', defaultStatus: 'no' },
   ]
