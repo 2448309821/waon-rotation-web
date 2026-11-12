@@ -12,6 +12,16 @@ export const DEFAULT_TEACHERS = [
   { name: '裴',   remote: false, skipMeeting: false, defaultStatus: 'no', classes: ['さくら', '入門(王)'] },
 ]
 
+export function teachersForMonth(teachers, monthKey) {
+  const [year, month] = String(monthKey).split('-').map(Number)
+  const target = year * 12 + month
+  return teachers.filter((teacher) => {
+    if (!teacher.activeFromMonth) return true
+    const [startYear, startMonth] = String(teacher.activeFromMonth).split('-').map(Number)
+    return target >= startYear * 12 + startMonth
+  })
+}
+
 // status.behavior controls scheduling logic; label is user-facing display text
 export const DEFAULT_STATUS_OPTIONS = [
   { id: 'yes',           label: '○',        behavior: 'yes' },
@@ -250,7 +260,10 @@ function tryAssignWithinMonthlyLimit(available, classes, classRules, allTeachers
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function buildSchedule(attendanceByTeacher, sessions, teachers, statusOptions, specialRules = {}) {
+export function buildSchedule(attendanceByTeacher, sessions, allTeachers, statusOptions, specialRules = {}) {
+  const teachers = specialRules.monthKey
+    ? teachersForMonth(allTeachers, specialRules.monthKey)
+    : allTeachers
   const classRules = buildClassRules(teachers)
   // Map status id → behavior; unknown ids treated as 'no'
   const behaviorOf = Object.fromEntries(statusOptions.map(o => [o.id, o.behavior]))

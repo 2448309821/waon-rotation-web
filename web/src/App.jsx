@@ -16,6 +16,7 @@ import {
   buildSchedule,
   generateSessions,
   sessionTypeOptions,
+  teachersForMonth,
 } from './schedule'
 import { ROTATION_STATE_ID, supabase } from './supabase'
 import {
@@ -1152,6 +1153,7 @@ export default function App() {
   } = state
 
   const monthKey = `${year}-${month}`
+  const monthTeachers = teachersForMonth(teachers, monthKey)
   const today = new Date()
   const todayKey = `${today.getMonth() + 1}/${today.getDate()}`
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -1161,7 +1163,9 @@ export default function App() {
   const meetingNotes = meetingNotesByMonth[monthKey] ?? {}
   const myMemo = identity ? (myMemosByTeacher[identity]?.[monthKey] ?? '') : ''
   const isAdmin = identity === ADMIN_NAME
-  const effectiveTeacher = isAdmin ? currentTeacher : identity
+  const effectiveTeacher = isAdmin
+    ? (monthTeachers.some((teacher) => teacher.name === currentTeacher) ? currentTeacher : monthTeachers[0]?.name)
+    : identity
   const isMonthLocked = !!(lockedMonths?.[monthKey])
   const canEditAdmin = isAdmin && !isMonthLocked
   const activeBrandIconId = BRAND_ICONS.some((icon) => icon.id === brandIconId) ? brandIconId : BRAND_ICONS[0].id
@@ -1174,6 +1178,7 @@ export default function App() {
     const avoidRepeatedClasses = (targetYear * 12 + targetMonth) >= (startYear * 12 + startMonth)
     return {
       ...specialRules,
+      monthKey: targetMonthKey,
       avoidRepeatedClasses,
       ...(monthSeed ? { randomSeed: monthSeed } : {}),
     }
@@ -1197,7 +1202,7 @@ export default function App() {
 
   let schedule = []
   try {
-    schedule = buildSchedule(attendance, sessions, teachers, statusOptions, effectiveSpecialRules)
+    schedule = buildSchedule(attendance, sessions, monthTeachers, statusOptions, effectiveSpecialRules)
   } catch (error) {
     console.error(error)
   }
@@ -1485,7 +1490,7 @@ export default function App() {
   // ── Lock / Finalize ───────────────────────────────────────────────────────────
   function finalizeMonth() {
     if (!isAdmin) return
-    const markdown = buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions)
+    const markdown = buildMarkdownExport(year, month, monthTeachers, sessions, schedule, memos, attendance, statusOptions)
     setState((s) => ({
       ...s,
       lockedMonths: { ...(s.lockedMonths ?? {}), [monthKey]: true },
@@ -1527,7 +1532,7 @@ export default function App() {
 
   // ── Markdown export ───────────────────────────────────────────────────────────
   async function exportMonthTable() {
-    const markdown = buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions)
+    const markdown = buildMarkdownExport(year, month, monthTeachers, sessions, schedule, memos, attendance, statusOptions)
     const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.md`
     try {
       if (navigator.clipboard?.writeText) {
@@ -1550,7 +1555,7 @@ export default function App() {
   }
 
   function exportHtmlTable() {
-    const html = buildHtmlExport(year, month, teachers, sessions, schedule, attendance, statusOptions)
+    const html = buildHtmlExport(year, month, monthTeachers, sessions, schedule, attendance, statusOptions)
     const fileName = `${year}-${String(month).padStart(2, '0')}-rotation.html`
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -1563,7 +1568,7 @@ export default function App() {
 
   function exportWordTable() {
     const fileName = `${year}年${month}月_担当表.docx`
-    const blob = buildRotationTableDocx(year, month, teachers, sessions, schedule, attendance, statusOptions)
+    const blob = buildRotationTableDocx(year, month, monthTeachers, sessions, schedule, attendance, statusOptions)
     downloadBlob(blob, fileName)
     setExportMessage('Word担当表を保存しました。')
     setTimeout(() => setExportMessage(''), 3500)
@@ -1764,7 +1769,7 @@ export default function App() {
   }
 
   function scheduleMailDraft() {
-    const tableText = buildMarkdownExport(year, month, teachers, sessions, schedule, memos, attendance, statusOptions)
+    const tableText = buildMarkdownExport(year, month, monthTeachers, sessions, schedule, memos, attendance, statusOptions)
     return {
       subject: `【わをん】${year}年${month}月 担当表`,
       body: `${year}年${month}月の担当表をお知らせします。\n\n${tableText}\n\n添付のPDFファイルとWordファイルをご確認ください。\n\n連絡者：${identity || '未選択'}`,
@@ -2247,7 +2252,7 @@ export default function App() {
 
   // ── Teachers ──────────────────────────────────────────────────────────────────
   function handleSelectTeacher(name) {
-    if (!teachers.find((t) => t.name === name)) return
+    if (!monthTeachers.find((t) => t.name === name)) return
     if (!isAdmin && name !== identity) return
     setState((s) => ({ ...s, currentTeacher: name }))
   }
@@ -2260,6 +2265,7 @@ export default function App() {
   function handleStatusChange(sessionKey, value) {
     const targetTeacher = effectiveTeacher
     if (!targetTeacher) return
+    if (!monthTeachers.some((teacher) => teacher.name === targetTeacher)) return
     if (isMonthLocked) return
     setState((s) => {
       const currentMonth = s.attendanceByMonth[monthKey] ?? {}
@@ -2613,11 +2619,11 @@ export default function App() {
   const sortedBulletin = [...bulletinBoard.filter((p) => p.pinned), ...bulletinBoard.filter((p) => !p.pinned)]
   const unassignedCount = schedule.reduce((sum, session) => sum + (session.unassignedClasses?.length ?? 0), 0)
   const editableSessions = sessions.filter((session) => !session.closed)
-  const explicitAttendanceCount = teachers.reduce((sum, teacher) => (
+  const explicitAttendanceCount = monthTeachers.reduce((sum, teacher) => (
     sum + editableSessions.filter((session) => attendance[teacher.name]?.[session.key] !== undefined).length
   ), 0)
-  const totalAttendanceSlots = teachers.length * editableSessions.length
-  const mobileAttendanceDoneCount = teachers.filter((teacher) => (
+  const totalAttendanceSlots = monthTeachers.length * editableSessions.length
+  const mobileAttendanceDoneCount = monthTeachers.filter((teacher) => (
     editableSessions.some((session) => attendance[teacher.name]?.[session.key] !== undefined)
   )).length
   const meetingCount = sessions.filter((session) => session.meeting && !session.closed).length
@@ -2699,7 +2705,8 @@ export default function App() {
     if (!teacher) return null
     const limit = teacher.maxMonthlyAssignments ?? ''
     const assignedCount = schedule.filter((session) => assignedClassesFor(session, teacherName).length > 0).length
-    const canEditLimit = canEditAdmin || teacherName === identity
+    const canEditLimit = (canEditAdmin || teacherName === identity)
+      && monthTeachers.some((candidate) => candidate.name === teacherName)
     return (
       <div className={compact ? 'monthly-limit-card monthly-limit-card-compact' : 'monthly-limit-card'}>
         <div>
@@ -3047,7 +3054,7 @@ export default function App() {
         <MonthControls />
         <div className="metric-grid">
           <div className="metric-card"><span>開催日</span><strong>{editableSessions.length}回</strong></div>
-          <div className="metric-card"><span>出席入力</span><strong>{teachers.filter(t => editableSessions.some(s => attendance[t.name]?.[s.key] !== undefined)).length}/{teachers.length}人</strong></div>
+          <div className="metric-card"><span>出席入力</span><strong>{monthTeachers.filter(t => editableSessions.some(s => attendance[t.name]?.[s.key] !== undefined)).length}/{monthTeachers.length}人</strong></div>
           <div className={`metric-card ${unassignedCount > 0 ? 'metric-warn' : 'metric-ok'}`}><span>未担当</span><strong>{unassignedCount}</strong></div>
           <div className="metric-card"><span>例会</span><strong>{meetingCount}</strong></div>
         </div>
@@ -3088,7 +3095,7 @@ export default function App() {
             {isAdmin && (
               <div className="teacher-link-stack">
                 <h3>先生別リンク</h3>
-                {teachers.map((teacher) => (
+                {monthTeachers.map((teacher) => (
                   <button key={teacher.name} type="button" className="ghost-btn" onClick={() => copyTeacherLink(teacher.name)}>
                     {copiedLink === teacher.name ? `${teacher.name} コピー済み` : teacher.name}
                   </button>
@@ -3116,7 +3123,7 @@ export default function App() {
   }
 
   function AttendanceView() {
-    const attendanceRows = teachers.map((teacher) => {
+    const attendanceRows = monthTeachers.map((teacher) => {
       const entered = editableSessions.filter((session) => attendance[teacher.name]?.[session.key] !== undefined).length
       return { teacher, entered }
     })
@@ -3129,7 +3136,7 @@ export default function App() {
             {isAdmin && (
               <>
                 <div className="chip-row">
-                  {teachers.map((teacher) => (
+                  {monthTeachers.map((teacher) => (
                     <button key={teacher.name} type="button" className={teacher.name === effectiveTeacher ? 'chip active' : 'chip'} onClick={() => handleSelectTeacher(teacher.name)}>
                       {teacher.name}
                     </button>
@@ -3137,7 +3144,7 @@ export default function App() {
                 </div>
                 <div className="teacher-links-row">
                   <span className="teacher-links-hint">先生別リンク</span>
-                  {teachers.map((teacher) => (
+                  {monthTeachers.map((teacher) => (
                     <button key={teacher.name} type="button" className="teacher-link-btn" onClick={() => copyTeacherLink(teacher.name)}>
                       {copiedLink === teacher.name ? `${teacher.name} コピー済み` : teacher.name}
                     </button>
@@ -3148,7 +3155,7 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <h2>{effectiveTeacher} さんの出席</h2>
-                <p>{isMonthLocked ? 'この月の担当表は確定済みです。' : '日付ごとに状態を選んでください。'}</p>
+                <p>{!monthTeachers.some((teacher) => teacher.name === effectiveTeacher) ? 'この月は参加開始前です。' : isMonthLocked ? 'この月の担当表は確定済みです。' : '日付ごとに状態を選んでください。'}</p>
               </div>
             </div>
             <MonthlyLimitControl teacherName={effectiveTeacher} />
@@ -3157,7 +3164,7 @@ export default function App() {
                 const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
                 const effectiveStatus = getEffectiveStatus(effectiveTeacher, session.key)
                 const isExplicit = attendance[effectiveTeacher]?.[session.key] !== undefined
-                const disabled = session.closed || isMonthLocked
+                const disabled = session.closed || isMonthLocked || !monthTeachers.some((teacher) => teacher.name === effectiveTeacher)
                 return (
                   <article key={session.key} className={`attendance-card attendance-card-${type} ${disabled ? 'is-disabled' : ''}`}>
                     <div className="attendance-card-head">
@@ -3315,7 +3322,7 @@ export default function App() {
                   <td className="col-sticky td-label td-unassigned-label">未担当</td>
                   {schedule.map((session) => <td key={session.key} className={session.unassignedClasses?.length > 0 ? 'td-unassigned' : session.closed ? 'td-holiday' : ''}>{session.unassignedClasses?.join('、') || ''}</td>)}
                 </tr>
-                {teachers.map((teacher) => (
+                {monthTeachers.map((teacher) => (
                   <tr key={teacher.name}>
                     <td className="col-sticky td-label">{teacher.name}</td>
                     {schedule.map((session) => {
@@ -3453,7 +3460,7 @@ export default function App() {
                                 <ClassChip label={cls} checked={classes.includes(cls)} onChange={(e) => toggleSessionClass(session, cls, e.target.checked)} disabled={!canEditAdmin} />
                                 <select className="manual-teacher-select" value={getManualAssignment(session, cls) ?? ''} onChange={(e) => e.target.value ? setManualAssignment(session.key, cls, e.target.value) : resetManualAssignment(session.key, cls)} disabled={!canEditAdmin}>
                                   <option value="">auto</option>
-                                  {teachers.map((teacher) => <option key={teacher.name} value={teacher.name}>{teacher.name}</option>)}
+                                  {monthTeachers.map((teacher) => <option key={teacher.name} value={teacher.name}>{teacher.name}</option>)}
                                 </select>
                               </div>
                             ))}
@@ -3615,6 +3622,7 @@ export default function App() {
                   <th>遠方</th>
                   <th>例会配慮</th>
                   <th>既定出欠</th>
+                  <th>参加開始</th>
                   <th>月上限</th>
                   {allClasses.map((cls) => <th key={cls}>{cls}</th>)}
                   <th>操作</th>
@@ -3631,6 +3639,7 @@ export default function App() {
                         {statusOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                       </select>
                     </td>
+                    <td><input type="month" value={teacher.activeFromMonth ?? ''} onChange={(e) => updateTeacher(idx, 'activeFromMonth', e.target.value)} disabled={!canEditAdmin} aria-label={`${teacher.name}の参加開始月`} /></td>
                     <td>
                       <input
                         type="number"
@@ -4206,7 +4215,7 @@ export default function App() {
     const targetAttendance = attendanceByMonth[targetMonthKey] ?? {}
     let targetSchedule = []
     try {
-      targetSchedule = buildSchedule(targetAttendance, targetSessions, teachers, statusOptions, targetSpecialRules)
+      targetSchedule = buildSchedule(targetAttendance, targetSessions, teachersForMonth(teachers, targetMonthKey), statusOptions, targetSpecialRules)
     } catch (error) {
       console.error(error)
     }
@@ -4329,7 +4338,7 @@ export default function App() {
         <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" showMonth />
         <div className="mobile-metrics">
           <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${sessionTypeLabel(nextSession)}` : 'なし'}</strong></div>
-          <div><span>出席入力</span><strong>{mobileAttendanceDoneCount}/{teachers.length}</strong></div>
+          <div><span>出席入力</span><strong>{mobileAttendanceDoneCount}/{monthTeachers.length}</strong></div>
           <div className={unassignedCount > 0 ? 'is-warn' : 'is-ok'}><span>未担当</span><strong>{unassignedCount}</strong></div>
           <div><span>代替候補</span><strong>{substituteCount}</strong></div>
         </div>
@@ -4341,7 +4350,7 @@ export default function App() {
         <section className="mobile-card-list">
           <h2>今月の回</h2>
           {schedule.map((session) => {
-            const counts = teachers.reduce((acc, teacher) => {
+            const counts = monthTeachers.reduce((acc, teacher) => {
               const tone = statusTone(getStatusInfo(teacher.name, session.key).behavior)
               acc[tone] = (acc[tone] ?? 0) + 1
               return acc
@@ -4371,7 +4380,7 @@ export default function App() {
         <MobileHeader title="出席入力" subtitle={isAdmin ? '先生を切り替えて入力できます' : '自分の出席だけ入力できます'} showMonth />
         {isAdmin ? (
           <div className="mobile-chip-scroll">
-            {teachers.map((teacher) => (
+            {monthTeachers.map((teacher) => (
               <button key={teacher.name} type="button" className={teacher.name === effectiveTeacher ? 'active' : ''} onClick={() => handleSelectTeacher(teacher.name)}>
                 {teacher.name}
               </button>
@@ -4382,7 +4391,7 @@ export default function App() {
         <div className="mobile-card-list">
           {sessions.map((session) => {
             const status = getStatusInfo(effectiveTeacher, session.key)
-            const disabled = session.closed || isMonthLocked
+            const disabled = session.closed || isMonthLocked || !monthTeachers.some((teacher) => teacher.name === effectiveTeacher)
             return (
               <article key={session.key} className={`mobile-attendance-card ${disabled ? 'is-disabled' : ''}`}>
                 <div className="mobile-card-head">
@@ -4508,7 +4517,7 @@ export default function App() {
                   </div>
                   <div className="mobile-teacher-status-table">
                     <h3>出席状態・代替候補</h3>
-                    {teachers.map((teacher) => {
+                    {monthTeachers.map((teacher) => {
                       const classes = assignedClassesFor(session, teacher.name)
                       const status = getStatusInfo(teacher.name, session.key)
                       const tone = statusTone(status.behavior)
@@ -4589,6 +4598,10 @@ export default function App() {
                 <select value={teacher.defaultStatus ?? 'no'} onChange={(e) => updateTeacher(idx, 'defaultStatus', e.target.value)} disabled={!canEditAdmin}>
                   {statusOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
                 </select>
+                <label className="mobile-field-label">
+                  <span>参加開始</span>
+                  <input type="month" value={teacher.activeFromMonth ?? ''} onChange={(e) => updateTeacher(idx, 'activeFromMonth', e.target.value)} disabled={!canEditAdmin} />
+                </label>
                 <label className="mobile-field-label">
                   <span>月上限</span>
                   <input
