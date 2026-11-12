@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildSchedule } from './schedule.js'
+import { buildSchedule, teachersForMonth } from './schedule.js'
 
 const yesStatus = [{ id: 'yes', label: '○', behavior: 'yes' }]
 
@@ -96,4 +96,21 @@ test('an automatic assignment does not give a second class to a manually assigne
   )
 
   assert.deepEqual(schedule[0].assignments, { X: 'A', Y: 'B' })
+})
+
+test('a December joiner is absent from earlier months and waits for declared attendance', () => {
+  const teachers = [
+    { name: 'New', classes: ['入門'], activeFromMonth: '2026-12', defaultStatus: 'no' },
+  ]
+  const lesson = { ...session('12/5'), requiredClasses: ['入門', '入門(王)'] }
+  const statuses = [
+    ...yesStatus,
+    { id: 'no', label: '×', behavior: 'no' },
+  ]
+
+  assert.deepEqual(teachersForMonth(teachers, '2026-11'), [])
+  assert.deepEqual(teachersForMonth(teachers, '2026-12'), teachers)
+  assert.deepEqual(buildSchedule({ New: { '12/5': 'yes' } }, [lesson], teachers, statuses, { monthKey: '2026-11' })[0].assignments, {})
+  assert.deepEqual(buildSchedule({}, [lesson], teachers, statuses, { monthKey: '2026-12' })[0].assignments, {})
+  assert.deepEqual(buildSchedule({ New: { '12/5': 'yes' } }, [lesson], teachers, statuses, { monthKey: '2026-12' })[0].assignments, { 入門: 'New' })
 })
