@@ -10,6 +10,7 @@ export const DEFAULT_TEACHERS = [
   { name: '岡崎', remote: true,  skipMeeting: false, defaultStatus: 'no', classes: ['きく', 'さくら'] },
   { name: '相良', remote: false, skipMeeting: false, defaultStatus: 'no', classes: ['きく', 'さくら', 'わかば', '入門', '入門(denji)', '入門(王)'] },
   { name: '裴',   remote: false, skipMeeting: false, defaultStatus: 'no', classes: ['さくら', '入門(王)'] },
+  { name: 'インシカン', remote: false, skipMeeting: false, defaultStatus: 'no', activeFromMonth: '2026-12', classes: ['入門'] },
 ]
 
 export function teachersForMonth(teachers, monthKey) {
