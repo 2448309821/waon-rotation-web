@@ -274,6 +274,71 @@ function tryAssignWithinMonthlyLimit(available, classes, classRules, allTeachers
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+function classOrderOptions(day, classRules) {
+  const baseline = day.assignments
+  const movable = Object.keys(baseline).filter(cls => !Object.hasOwn(day.manualAssignments ?? {}, cls))
+  const names = movable.map(cls => baseline[cls])
+  const choices = [{ assignments: baseline, changed: 0 }]
+
+  function addChoice(order) {
+    if (!movable.every((cls, i) => classRules[cls]?.has(order[i]))) return
+    const changed = order.reduce((count, name, i) => count + (name !== names[i] ? 1 : 0), 0)
+    if (changed) choices.push({
+      assignments: { ...baseline, ...Object.fromEntries(movable.map((cls, i) => [cls, order[i]])) },
+      changed,
+    })
+  }
+
+  if (movable.length <= 6) {
+    if (movable.length > 1) for (const order of permute(names)) addChoice(order)
+  } else {
+    // Keep unusually large custom timetables responsive by considering pair swaps only.
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        const order = [...names]
+        order[i] = names[j]
+        order[j] = names[i]
+        addChoice(order)
+      }
+    }
+  }
+  return choices
+}
+
+function optimizeConsecutiveClasses(schedule, classRules) {
+  const lessonDays = schedule.filter(day => !day.closed && !day.eventLabel)
+  if (!lessonDays.some((day, i) => i > 0 && countPreviousSessionRepeats(day.assignments, lessonDays[i - 1].assignments))) {
+    return schedule
+  }
+
+  // Each day keeps its teachers and open classes. Score paths across the month,
+  // preferring fewer consecutive repeats, then fewer changes to the original plan.
+  const better = (repeats, changed, best) => !best || repeats < best.repeats || (repeats === best.repeats && changed < best.changed)
+  let paths = [{ assignments: {}, repeats: 0, changed: 0, previous: null }]
+  for (const day of lessonDays) {
+    paths = classOrderOptions(day, classRules).map(({ assignments, changed }) => {
+      const entries = Object.entries(assignments)
+      let best
+      for (const previous of paths) {
+        let repeats = previous.repeats
+        for (const [cls, name] of entries) if (previous.assignments[cls] === name) repeats++
+        const totalChanged = previous.changed + changed
+        if (better(repeats, totalChanged, best)) {
+          best = { day, assignments, repeats, changed: totalChanged, previous }
+        }
+      }
+      return best
+    })
+  }
+
+  const updated = new Map()
+  const bestPath = paths.reduce((best, next) => better(next.repeats, next.changed, best) ? next : best)
+  for (let path = bestPath; path.previous; path = path.previous) {
+    if (path.assignments !== path.day.assignments) updated.set(path.day, { ...path.day, assignments: path.assignments })
+  }
+  return schedule.map(day => updated.get(day) ?? day)
+}
+
 export function buildSchedule(attendanceByTeacher, sessions, allTeachers, statusOptions, specialRules = {}) {
   const teachers = specialRules.monthKey
     ? teachersForMonth(allTeachers, specialRules.monthKey)
@@ -288,7 +353,7 @@ export function buildSchedule(attendanceByTeacher, sessions, allTeachers, status
   const classAssignmentCounts = {}
   let previousAssignments = {}
 
-  return sessions.map(session => {
+  const schedule = sessions.map(session => {
     if (session.closed || session.eventLabel) {
       return {
         ...session,
@@ -424,4 +489,8 @@ export function buildSchedule(attendanceByTeacher, sessions, allTeachers, status
       notes,
     }
   })
+
+  return avoidRepeatedClasses && specialRules.optimizeRepeats !== false
+    ? optimizeConsecutiveClasses(schedule, classRules)
+    : schedule
 }

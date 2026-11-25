@@ -88,6 +88,47 @@ test('repeated classes remain allowed when capability rules leave no alternative
   ])
 })
 
+test('looks ahead and swaps the first week when the next week has only one eligible teacher', () => {
+  const teachers = [
+    { name: 'B', classes: ['X', 'Y'], defaultStatus: 'yes', maxMonthlyAssignments: 2 },
+    { name: 'A', classes: ['X', 'Y'], defaultStatus: 'no', maxMonthlyAssignments: 1 },
+    { name: 'C', classes: ['Y'], defaultStatus: 'no', maxMonthlyAssignments: 1 },
+  ]
+  const attendance = { A: { '1/1': 'yes' }, C: { '1/15': 'yes' } }
+  const sessions = [
+    session('1/1'),
+    { ...session('1/8'), eventLabel: 'イベント' },
+    session('1/15'),
+  ]
+  const rules = { avoidRepeatedClasses: true }
+  const original = buildSchedule(attendance, sessions, teachers, yesStatus, { ...rules, optimizeRepeats: false })
+  const improved = buildSchedule(attendance, sessions, teachers, yesStatus, rules)
+  assert.deepEqual(original.map(day => day.assignments), [{ X: 'B', Y: 'A' }, {}, { X: 'B', Y: 'C' }])
+  assert.deepEqual(improved.map(day => day.assignments), [{ X: 'A', Y: 'B' }, {}, { X: 'B', Y: 'C' }])
+  assert.deepEqual(improved.map(day => day.selectedTeachers), original.map(day => day.selectedTeachers))
+  assert.deepEqual(improved.map(day => day.unassignedClasses), original.map(day => day.unassignedClasses))
+
+  const withManual = buildSchedule(attendance, [session('1/1', { X: 'B' }), ...sessions.slice(1)], teachers, yesStatus, rules)
+  assert.deepEqual(withManual.map(day => day.assignments), original.map(day => day.assignments))
+})
+
+test('coordinates more than two lesson dates without changing selected teachers', () => {
+  const teachers = [
+    { name: 'B', classes: ['X', 'Y'], defaultStatus: 'yes' },
+    { name: 'A', classes: ['X', 'Y'], defaultStatus: 'yes' },
+    { name: 'C', classes: ['Y'], defaultStatus: 'no' },
+  ]
+  const attendance = { A: { '1/22': 'no' }, C: { '1/22': 'yes' } }
+  const sessions = ['1/1', '1/8', '1/15', '1/22'].map(key => session(key))
+  const result = buildSchedule(attendance, sessions, teachers, yesStatus, { avoidRepeatedClasses: true })
+  assert.deepEqual(result.map(day => day.assignments), [
+    { X: 'A', Y: 'B' },
+    { X: 'B', Y: 'A' },
+    { X: 'A', Y: 'B' },
+    { X: 'B', Y: 'C' },
+  ])
+})
+
 test('a monthly-repeat tie avoids repeating the class from the immediately previous session', () => {
   const teachers = [
     { name: 'A', classes: ['X', 'Y'], defaultStatus: 'yes' },

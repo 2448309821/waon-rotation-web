@@ -1188,6 +1188,7 @@ export default function App() {
       ...specialRules,
       monthKey: targetMonthKey,
       avoidRepeatedClasses,
+      optimizeRepeats: !lockedMonths?.[targetMonthKey],
       ...(monthSeed ? { randomSeed: monthSeed } : {}),
     }
   }
