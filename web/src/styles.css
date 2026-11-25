@@ -2238,7 +2238,7 @@ textarea::placeholder {
 .session-row-past { opacity: 0.75; }
 .session-row-today { box-shadow: 0 0 0 2px var(--color-primary); }
 .session-counts-bar { margin-top: var(--space-2); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); background: var(--primary-50); font-size: 0.88rem; font-weight: 600; text-align: right; color: var(--color-text); }
-.th-today { background: var(--color-primary) !important; color: #fff !important; }
+.th-today { background: var(--primary-soft) !important; color: var(--primary-strong) !important; box-shadow: inset 0 -3px var(--primary); }
 .th-past { opacity: 0.6; }
 .td-past { opacity: 0.5; }
 .schedule-totals-header { font-weight: 700; font-size: 0.95rem; margin-bottom: var(--space-2); }
@@ -4273,3 +4273,31 @@ body:has(.mail-preview-backdrop) {
     grid-template-columns: 1fr;
   }
 }
+.roster-head { display:flex; align-items:center; flex-wrap:wrap; gap:12px 20px; padding:12px 0; border-bottom:1px solid var(--line); }
+.roster-title, .roster-tools, .month-pager, .month-pop { display:flex; align-items:center; gap:8px; }
+.roster-title h1 { margin:0; font-size:24px; }
+.roster-title > span { font-size:14px; }
+.roster-seal, .next-session { color:var(--primary-strong); font-weight:700; }
+.schedule-table-wrap table { table-layout:fixed; }
+.schedule-table-wrap th:first-child { width:8em; }
+.schedule-table-wrap td { overflow-wrap:anywhere; }
+.next-session { margin-inline-start:8px; font-size:13px; }
+.roster-tools { margin-inline-start:auto; flex-wrap:wrap; }
+.month-pager { width:max-content; max-width:100%; gap:0; }
+.month-pager button, .month-pager summary, .roster-tools button, .roster-tools summary, .report-sync button {
+  box-sizing:border-box; min-height:40px; padding:6px 12px; font:inherit; cursor:pointer; color:inherit;
+  background:var(--table-cell-bg, white); border:1px solid var(--line); border-radius:4px;
+}
+.month-pager > button { width:44px; font-size:21px; }
+.month-pager summary, .roster-tools summary { align-content:center; }
+.month-pager details, .roster-tools details { position:relative; }
+.month-pop, .roster-output { position:absolute; z-index:8; top:calc(100% + 3px); padding:8px; background:var(--table-cell-bg,white); border:1px solid var(--line-strong); border-radius:6px; box-shadow:0 4px 12px #0002; }
+.month-pop { left:50%; transform:translateX(-50%); }
+.roster-output { width:210px; display:grid; gap:4px; }
+.roster-output .schedule-download-buttons { display:grid; grid-template-columns:1fr; }
+.roster-head > p { flex-basis:100%; margin:0; }
+.day-summary { display:grid; gap:3px; margin:6px 0 10px; }
+.report-sync { display:inline-flex; align-items:center; gap:8px; }
+.mobile-screen .roster-head { justify-content:space-between; }
+.mobile-screen .roster-tools { margin-inline-start:0; }
+.mobile-screen .month-pager button, .mobile-screen .month-pager summary, .mobile-screen .roster-tools button, .mobile-screen .roster-tools summary { min-height:44px; }

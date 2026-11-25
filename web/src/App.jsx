@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
+import MonthPager from './MonthPager'
+import { readMonth, reportSyncLabel } from './plannerView'
 import '@fontsource/noto-sans-jp/400.css'
 import '@fontsource/noto-sans-jp/700.css'
 import waonIcon1 from './assets/brand-icons/waon-icon-1.webp'
@@ -370,6 +372,7 @@ function scheduleCellText(teacher, session, attendance, statusOptions) {
     .join(' / ')
   if (assigned) return assigned
   if (session.closed) return ''
+  if (session.social && attendance?.[teacher.name]?.[session.key] == null) return '未回答'
   if (session.meetingOnlyTeachers?.includes(teacher.name) || session.maybeMeetingTeachers?.includes(teacher.name)) return '会議'
   const statusId = attendance?.[teacher.name]?.[session.key] ?? teacher.defaultStatus ?? 'no'
   const behavior = statusOptions.find((option) => option.id === statusId)?.behavior ?? 'no'
@@ -385,7 +388,7 @@ function buildHtmlExport(year, month, teachers, sessions, schedule, attendance, 
   rows.push('<p>☆　当番は当てませんので、当日の担当者が協力して教室の準備をお願いします。</p>')
   rows.push('<table>')
   rows.push('<tr><th></th>' + sessions.map((s) => `<th>${s.label}</th>`).join('') + '</tr>')
-  rows.push('<tr><td>区分</td>' + schedule.map((s) => `<td>${s.closed ? '休み' : s.meeting ? '例会' : '通常'}</td>`).join('') + '</tr>')
+  rows.push('<tr><td>区分</td>' + schedule.map((s) => `<td>${scheduleTypeLabel(s)}</td>`).join('') + '</tr>')
   rows.push('<tr><td>特別連絡</td>' + schedule.map((s) => `<td>${s.special || ''}</td>`).join('') + '</tr>')
   for (const teacher of teachers) {
     const row = schedule.map((s) => `<td>${scheduleCellText(teacher, s, attendance, statusOptions)}</td>`)
@@ -422,6 +425,7 @@ function buildMarkdownExport(year, month, teachers, sessions, schedule, memos, a
 
 function scheduleTypeLabel(session) {
   if (session.closed) return '休み'
+  if (session.social) return '交流会'
   if (session.meeting) return '例会'
   return '通常'
 }
@@ -485,7 +489,7 @@ ${wordParagraph('＊事務業務はその日の担当者が助け合って行い
 function buildLineText(year, month, schedule, memos) {
   const lines = [`【${year}年${month}月 担当表】`, '']
   for (const session of schedule) {
-    const typeLabel = session.closed ? 'やすみ' : session.meeting ? '例会' : ''
+    const typeLabel = session.closed ? 'やすみ' : session.social ? '交流会' : session.meeting ? '例会' : ''
     lines.push(`◆ ${session.label}${typeLabel ? `（${typeLabel}）` : ''}`)
     if (session.closed) {
       lines.push('わをん休み')
@@ -1082,7 +1086,16 @@ export default function App() {
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [copiedLink, setCopiedLink] = useState('')
   const [activeSection, setActiveSection] = useState('')
-  const [activeView, setActiveView] = useState('home')
+  const [activeView, setActiveView] = useState(() => new URLSearchParams(location.search).get('view') || 'home')
+  const [{ year, month }, setViewMonth] = useState(() => readMonth(new URLSearchParams(location.search).get('month')))
+  const [currentTeacher, setCurrentTeacher] = useState(() => state.currentTeacher)
+  const [saveAttempt, setSaveAttempt] = useState(0)
+  useEffect(() => {
+    const url = new URL(location.href)
+    url.searchParams.set('month', year + '-' + String(month).padStart(2, '0'))
+    url.searchParams.set('view', activeView)
+    window.history.replaceState(window.history.state, '', url)
+  }, [activeView, year, month])
   const [uiMode, setUiMode] = useState(loadUiMode)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
   const [mobileAdminPanel, setMobileAdminPanel] = useState('sessions')
@@ -1127,14 +1140,11 @@ export default function App() {
   const lessonMailPdfGenerationRef = useRef(0)
 
   const {
-    year,
-    month,
     allClasses,
     defaultClasses,
     statusOptions,
     specialRules,
     teachers,
-    currentTeacher,
     sessionTypesByMonth,
     sessionClassesByMonth,
     sessionManualByMonth,
@@ -1294,13 +1304,6 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!identity || isAdmin) return
-    if (currentTeacher !== identity) {
-      setState((s) => ({ ...s, currentTeacher: identity }))
-    }
-  }, [identity, isAdmin, currentTeacher])
-
-  useEffect(() => {
     const media = window.matchMedia('(max-width: 760px)')
     const update = () => setIsMobileViewport(media.matches)
     update()
@@ -1452,7 +1455,7 @@ export default function App() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [state])
+  }, [state, saveAttempt])
 
   // ── Identity ─────────────────────────────────────────────────────────────────
   function selectIdentity(name) {
@@ -1466,7 +1469,6 @@ export default function App() {
     setLessonMailDispatchMode('')
     setLessonMailDispatchMessage('')
     setLessonMailPreviewConfirmed(false)
-    if (name !== ADMIN_NAME) setState((s) => ({ ...s, currentTeacher: name }))
   }
 
   function switchIdentity() {
@@ -1484,12 +1486,13 @@ export default function App() {
   }
 
   // ── Month ────────────────────────────────────────────────────────────────────
-  function setYear(y) { setState((s) => ({ ...s, year: y })) }
-  function setMonth(m) { setState((s) => ({ ...s, month: m })) }
+  function monthPager(onChange = setViewMonth) {
+    return <MonthPager year={year} month={month} onChange={onChange} />
+  }
 
   // ── Lock / Finalize ───────────────────────────────────────────────────────────
   function finalizeMonth() {
-    if (!isAdmin) return
+    if (!isAdmin || isMonthLocked) return
     const markdown = buildMarkdownExport(year, month, monthTeachers, sessions, schedule, memos, attendance, statusOptions)
     setState((s) => ({
       ...s,
@@ -1511,7 +1514,7 @@ export default function App() {
   }
 
   function unlockMonth() {
-    if (!isAdmin) return
+    if (!isAdmin || !isMonthLocked || !window.confirm(year + '年' + month + '月の担当表のロックを解除しますか？')) return
     setState((s) => ({
       ...s,
       lockedMonths: { ...(s.lockedMonths ?? {}), [monthKey]: false },
@@ -1983,6 +1986,7 @@ export default function App() {
   }
 
   function getSessionClasses(session) {
+    if (session.social || session.closed) return []
     return sessionClassesByMonth[monthKey]?.[session.key] ?? session.requiredClasses
   }
 
@@ -2254,7 +2258,7 @@ export default function App() {
   function handleSelectTeacher(name) {
     if (!monthTeachers.find((t) => t.name === name)) return
     if (!isAdmin && name !== identity) return
-    setState((s) => ({ ...s, currentTeacher: name }))
+    setCurrentTeacher(name)
   }
 
   function getEffectiveStatus(teacherName, sessionKey) {
@@ -2696,6 +2700,26 @@ export default function App() {
     ? 'mobileMore'
     : currentMobileView
 
+  const nextDateKey = schedule.find(s => !s.closed && dateForSession(s) >= todayDate)?.key
+  const reportSaved = lessonReports[selectedLessonReportId]
+  const acknowledged = reportSaved && parseStateSnapshot(lastSyncedStateRef.current)?.lessonReportsByMonth?.[monthKey]?.[selectedLessonReportId]
+  const saveLabel = reportSyncLabel(!!reportSaved, cloudStatus, !!acknowledged && JSON.stringify(acknowledged) === JSON.stringify(reportSaved))
+  function reportSaveStatus() {
+    return <span className="report-sync" role="status">{saveLabel}{cloudStatus === 'error' && cloudReadyRef.current && reportSaved
+      ? <button onClick={() => setSaveAttempt(n => n + 1)}>再試行</button> : null}</span>
+  }
+  function attendanceOptions(session) {
+    return session.social ? statusOptions.filter(o => ['yes', 'maybe', 'no'].includes(o.behavior)).map(o => ({ ...o, label: {yes:'参加', maybe:'未定', no:'欠席'}[o.behavior] })) : statusOptions
+  }
+  function attendanceSummary(session) {
+    if (session.closed) return null
+    const declared = attendance[effectiveTeacher]?.[session.key]
+    const label = (session.social && declared === 'yes' ? '参加' : statusOptions.find(option => option.id === declared)?.label) || '未入力'
+    const lesson = schedule.find(s => s.key === session.key)
+    return <div className="day-summary"><span>出席希望：{label}</span>
+      {!session.social && <strong>{(isMonthLocked ? '確定担当：' : '担当案：') + (assignedClassesFor(lesson ?? {}, effectiveTeacher).join(' / ') || 'なし')}</strong>}</div>
+  }
+
   function UiModeSwitch({ compact = false }) {
     return <ModeSwitch uiMode={uiMode} onChange={setUiMode} compact={compact} />
   }
@@ -2774,20 +2798,7 @@ export default function App() {
   function MonthControls() {
     return (
       <div className="control-grid">
-        <label className="field-block">
-          <span>年</span>
-          <input type="number" value={year} min={2020} max={2040} onChange={(e) => { const v = parseInt(e.target.value, 10); if (v >= 2020 && v <= 2040) setYear(v) }} />
-        </label>
-        <label className="field-block">
-          <span>月</span>
-          <select value={month} onChange={(e) => setMonth(parseInt(e.target.value, 10))}>
-            {MONTH_JP.map((label, i) => <option key={i + 1} value={i + 1}>{label}</option>)}
-          </select>
-        </label>
-        <div className="field-block">
-          <span>&nbsp;</span>
-          <button type="button" className="ghost-btn" onClick={() => { const now = new Date(); setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }}>今月に戻る</button>
-        </div>
+        {monthPager()}
         <label className="field-block field-wide">
           <span>文字サイズ</span>
           <div className="inline-field">
@@ -2801,6 +2812,24 @@ export default function App() {
     )
   }
 
+  function scheduleToolbar(mobile = false) {
+    return <header className="roster-head">
+      <div className="roster-title"><h1>担当表</h1>{isMonthLocked ? <span className="roster-seal">確定済み</span> : <span>作成中</span>}</div>
+      {monthPager()}
+      <div className="roster-tools">
+        <details><summary>出力</summary><div className="roster-output">
+          <ScheduleDownloadActions />
+          {mobile || isAdmin ? <button onClick={copyLineText}>LINE用テキスト</button> : null}
+          {isAdmin ? <button onClick={exportMonthTable}>月表を保存</button> : null}
+          {mobile || isAdmin ? <button onClick={exportHtmlTable}>HTML表</button> : null}
+        </div></details>
+        <button disabled={!isMonthLocked} onClick={openScheduleMailPanel}>メール送信</button>
+        {isAdmin ? <button onClick={isMonthLocked ? unlockMonth : finalizeMonth}>{isMonthLocked ? 'ロック解除' : '今月を確定'}</button> : null}
+      </div>
+      {exportMessage || cloudStatus === 'error' ? <p role="status">{exportMessage || cloudMessage}</p> : null}
+    </header>
+  }
+
   function ExportActions() {
     return (
       <div className="action-row">
@@ -2809,7 +2838,7 @@ export default function App() {
         {isAdmin ? <button type="button" className="ghost-btn" onClick={copyLineText}>LINE用テキスト</button> : null}
         {isAdmin ? <button type="button" className="ghost-btn" onClick={exportMonthTable}>月表を保存</button> : null}
         {isAdmin ? <button type="button" className="ghost-btn" onClick={exportHtmlTable}>HTML表</button> : null}
-        {isAdmin ? <button type="button" className={isMonthLocked ? 'success-btn' : 'primary-btn'} onClick={isMonthLocked ? unlockMonth : finalizeMonth}>
+        {isAdmin ? <button type="button" className="primary-btn" disabled={isMonthLocked} onClick={finalizeMonth}>
           {isMonthLocked ? '確定済み' : '今月を確定'}
         </button> : null}
         {exportMessage ? <span className="inline-message">{exportMessage}</span> : null}
@@ -3072,7 +3101,7 @@ export default function App() {
                 <article key={session.key} className={`session-summary-card ${session.closed ? 'is-muted' : session.meeting ? 'is-info' : ''}`}>
                   <div>
                     <strong>{session.label}</strong>
-                    <span>{session.closed ? 'やすみ' : session.meeting ? '例会' : `${session.weekIndex}週目${session.weekIndex % 2 === 1 ? ' 王週' : ''}`}</span>
+                    <span>{session.closed ? 'やすみ' : session.social ? '交流会' : session.meeting ? '例会' : `${session.weekIndex}週目${session.weekIndex % 2 === 1 ? ' 王週' : ''}`}</span>
                   </div>
                   <div className="summary-kpis">
                     <span>出席 {session.selectedTeachers.length}</span>
@@ -3130,6 +3159,7 @@ export default function App() {
     return (
       <section id="attendance" className="screen-view">
         <AppHeader title="出席入力" subtitle="先生ごとの出席状態を入力します。△は人数不足時だけ担当に入ります。" />
+        {monthPager()}
         <ContextTabs items={[{ id: 'attendance', label: '出席入力' }, { id: 'attendanceStats', label: '出席統計' }]} />
         <div className="dashboard-grid">
           <section className="panel span-2">
@@ -3161,7 +3191,7 @@ export default function App() {
             <MonthlyLimitControl teacherName={effectiveTeacher} />
             <div className="attendance-card-grid">
               {sessions.map((session) => {
-                const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
+                const type = session.type
                 const effectiveStatus = getEffectiveStatus(effectiveTeacher, session.key)
                 const isExplicit = attendance[effectiveTeacher]?.[session.key] !== undefined
                 const disabled = session.closed || isMonthLocked || !monthTeachers.some((teacher) => teacher.name === effectiveTeacher)
@@ -3170,16 +3200,17 @@ export default function App() {
                     <div className="attendance-card-head">
                       <div>
                         <strong>{session.label}</strong>
-                        <span>{session.closed ? 'やすみ' : session.meeting ? '例会' : `${session.weekIndex}週目`}</span>
+                        <span>{session.closed ? 'やすみ' : session.social ? '交流会' : session.meeting ? '例会' : `${session.weekIndex}週目`}</span>
                       </div>
-                      {!isExplicit && !session.closed ? <span className="status-badge">デフォルト</span> : null}
                     </div>
+                    {attendanceSummary(session)}
                     <div className="status-segments">
-                      {statusOptions.map((option) => (
+                      {attendanceOptions(session).map((option) => (
                         <button
                           key={option.id}
                           type="button"
-                          className={effectiveStatus === option.id ? 'status-segment active' : 'status-segment'}
+                          aria-pressed={isExplicit && effectiveStatus === option.id}
+                          className={isExplicit && effectiveStatus === option.id ? 'status-segment active' : 'status-segment'}
                           disabled={disabled}
                           onClick={() => handleStatusChange(session.key, option.id)}
                         >
@@ -3237,6 +3268,7 @@ export default function App() {
     return (
       <section id="attendanceStats" className="screen-view">
         <AppHeader title="出席統計" subtitle="各回の学習者・ボランティア人数を確認・入力します。" />
+        {monthPager()}
         <ContextTabs items={[{ id: 'attendance', label: '出席入力' }, { id: 'attendanceStats', label: '出席統計' }]} />
         <div className="dashboard-grid">
           {schedule.filter((s) => !s.closed).map((session) => {
@@ -3245,7 +3277,7 @@ export default function App() {
             return (
               <section key={session.key} className="panel">
                 <div className="panel-header">
-                  <div><h2>{session.label}</h2><p>{sessionTypeLabel(session)}</p></div>
+                  <div><h2>{session.label}</h2><p>{scheduleTypeLabel(session)}</p></div>
                   <span>計{counts.total}名</span>
                 </div>
                 <div className="mobile-stats-editor">
@@ -3286,20 +3318,10 @@ export default function App() {
     function isToday(skey) { return isThisMonth && skey === todayKey }
     return (
       <section id="schedule" className="screen-view">
-        <AppHeader
-          title={`${year}年${MONTH_JP[month - 1]} 担当表`}
-          subtitle={isThisMonth ? `今日は${todayKey}` : '出席と担当可能クラスから自動で決まった結果です。'}
-          actions={<ExportActions />}
-        />
+        {scheduleToolbar()}
         <ContextTabs items={[{ id: 'schedule', label: '担当表' }, { id: 'sessions', label: '各回設定', adminOnly: true }]} />
         <ScheduleMailPanel />
         <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>自動で決まった担当</h2>
-              <p>会議だけ参加する人は `会議`、不足時に追加された人は特別連絡に表示されます。</p>
-            </div>
-          </div>
           <div className="table-wrap schedule-table-wrap">
             <table>
               <thead>
@@ -3308,8 +3330,8 @@ export default function App() {
                   {sessions.map((session) => {
                     const td = isToday(session.key)
                     const past = isPast(session.key)
-                    const cls = td ? 'th-today' : past ? 'th-past' : ''
-                    return <th key={session.key} className={cls}>{session.label}{session.meeting ? ' 例会' : ''}{td ? ' ★' : past ? ' ✓' : ''}</th>
+                    const cls = td || session.key === nextDateKey ? 'th-today' : past ? 'th-past' : ''
+                    return <th key={session.key} className={cls}>{session.label}{session.meeting ? ' 例会' : ''}{td ? ' 今日' : session.key === nextDateKey ? ' 次回' : past ? ' ✓' : ''}</th>
                   })}
                 </tr>
               </thead>
@@ -3336,6 +3358,8 @@ export default function App() {
                         content = assigned
                       } else if (atMeeting) {
                         content = <span className="table-pill info">会議</span>
+                      } else if (session.social && attendance[teacher.name]?.[session.key] == null) {
+                        content = '未回答'
                       } else if (!session.closed) {
                         const statusId = getEffectiveStatus(teacher.name, session.key)
                         const statusOpt = statusOptions.find(o => o.id === statusId)
@@ -3418,7 +3442,7 @@ export default function App() {
             <MonthControls />
             <div className="session-list expanded">
               {sessions.map((session, i) => {
-                const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
+                const type = session.type
                 const classes = getSessionClasses(session)
                 const isOverridden = !!sessionClassesByMonth[monthKey]?.[session.key]
                   || !!sessionManualByMonth[monthKey]?.[session.key]
@@ -3443,7 +3467,7 @@ export default function App() {
                         <span>学習者 {counts.studentTotal} ＋ ボランティア {counts.volunteer} ＝ <strong>{counts.total}人</strong></span>
                       </div>
                     )}
-                    {!session.closed && (
+                    {!session.closed && !session.social && (
                       <>
                         <div className="session-special-note-row">
                           <span className="session-special-note-label">特別連絡</span>
@@ -3912,31 +3936,22 @@ export default function App() {
 
   function openLessonReportOption(option) {
     if (!option) return
-    setYear(option.calendarYear)
-    setMonth(option.calendarMonth)
+    setViewMonth({ year: option.calendarYear, month: option.calendarMonth })
     setActiveLessonReportId(option.id)
   }
 
-  function moveLessonReportMonth(delta) {
-    const targetDate = new Date(year, month - 1 + delta, 1)
-    const targetYear = targetDate.getFullYear()
-    const targetMonth = targetDate.getMonth() + 1
+  function moveLessonReportMonth({ year: targetYear, month: targetMonth }) {
     const targetOptions = buildLessonReportOptionsForMonth(targetYear, targetMonth)
     const preferred = targetOptions.find((item) => item.className === selectedLessonOption?.className)
       ?? targetOptions[0]
-    setYear(targetYear)
-    setMonth(targetMonth)
+    setViewMonth({ year: targetYear, month: targetMonth })
     setActiveLessonReportId(preferred?.id ?? '')
   }
 
   function LessonReportTimelineControls({ compact = false }) {
     return (
       <div className={`lesson-timeline-toolbar ${compact ? 'compact' : ''}`}>
-        <div className="lesson-month-nav" aria-label="授業記録の月を移動">
-          <button type="button" className="ghost-btn" onClick={() => moveLessonReportMonth(-1)} aria-label="前の月">‹</button>
-          <strong>{year}年{month}月</strong>
-          <button type="button" className="ghost-btn" onClick={() => moveLessonReportMonth(1)} aria-label="次の月">›</button>
-        </div>
+        {monthPager(moveLessonReportMonth)}
         <div className="lesson-step-nav" aria-label="同じクラスの記録を移動">
           <button type="button" className="ghost-btn" onClick={() => openLessonReportOption(previousLessonOption)} disabled={!previousLessonOption}>
             <span>前回</span>
@@ -4068,7 +4083,7 @@ export default function App() {
         <AppHeader
           title="授業記録"
           subtitle="授業後の報告書を作成し、PDFまたはWord形式で保存します。"
-          actions={<div className="action-row"><button type="button" className="primary-btn" onClick={openLessonReportMail} disabled={!selectedLessonReport}>メール送信</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button><button type="button" className="ghost-btn" disabled={!selectedLessonReport}>保存済み</button></div>}
+          actions={<div className="action-row"><button type="button" className="primary-btn" onClick={openLessonReportMail} disabled={!selectedLessonReport}>メール送信</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportDocx(selectedLessonReport)} disabled={!selectedLessonReport}>DOCX出力</button><button type="button" className="ghost-btn" onClick={() => exportLessonReportPdf(selectedLessonReport)} disabled={!selectedLessonReport}>PDF出力</button>{reportSaveStatus()}</div>}
         />
         {LessonReportMailDialog({ report: selectedLessonReport })}
         {LessonReportTimelineControls({ compact: false })}
@@ -4153,35 +4168,6 @@ export default function App() {
     return 'no'
   }
 
-  function MobileMonthControls() {
-    return (
-      <div className="mobile-month-controls" aria-label="月を選ぶ">
-        <label>
-          <span>年</span>
-          <select value={year} onChange={(e) => setYear(parseInt(e.target.value, 10))}>
-            {Array.from({ length: 21 }, (_, i) => 2020 + i).map((value) => (
-              <option key={value} value={value}>{value}年</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>月</span>
-          <select value={month} onChange={(e) => setMonth(parseInt(e.target.value, 10))}>
-            {MONTH_JP.map((label, i) => <option key={i + 1} value={i + 1}>{label}</option>)}
-          </select>
-        </label>
-        <button type="button" onClick={() => { const now = new Date(); setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }}>
-          今月
-        </button>
-      </div>
-    )
-  }
-
-  function sessionTypeLabel(session) {
-    if (session.closed) return '休み'
-    if (session.meeting) return '例会'
-    return '通常'
-  }
 
   function assignedClassesFor(session, teacherName) {
     return Object.entries(session.assignments || {})
@@ -4314,7 +4300,7 @@ export default function App() {
           <strong>{identity}</strong>
           <span>{isAdmin ? '管理者' : '本人'}</span>
         </button>
-        {showMonth ? <MobileMonthControls /> : null}
+        {showMonth ? monthPager() : null}
       </header>
     )
   }
@@ -4337,7 +4323,7 @@ export default function App() {
       <section className="mobile-screen">
         <MobileHeader title={`${year}年${MONTH_JP[month - 1]}`} subtitle="担当表と出席の確認" showMonth />
         <div className="mobile-metrics">
-          <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${sessionTypeLabel(nextSession)}` : 'なし'}</strong></div>
+          <div><span>次回</span><strong>{nextSession ? `${nextSession.label} ${scheduleTypeLabel(nextSession)}` : 'なし'}</strong></div>
           <div><span>出席入力</span><strong>{mobileAttendanceDoneCount}/{monthTeachers.length}</strong></div>
           <div className={unassignedCount > 0 ? 'is-warn' : 'is-ok'}><span>未担当</span><strong>{unassignedCount}</strong></div>
           <div><span>代替候補</span><strong>{substituteCount}</strong></div>
@@ -4351,6 +4337,7 @@ export default function App() {
           <h2>今月の回</h2>
           {schedule.map((session) => {
             const counts = monthTeachers.reduce((acc, teacher) => {
+              if (session.social && attendance[teacher.name]?.[session.key] == null) return acc
               const tone = statusTone(getStatusInfo(teacher.name, session.key).behavior)
               acc[tone] = (acc[tone] ?? 0) + 1
               return acc
@@ -4359,7 +4346,7 @@ export default function App() {
               <article key={session.key} className="mobile-session-row">
                 <div>
                   <strong>{session.label}</strong>
-                  <span>{sessionTypeLabel(session)}</span>
+                  <span>{scheduleTypeLabel(session)}</span>
                 </div>
                 <div className="mobile-mini-statuses">
                   <span className="status-dot yes">○{counts.yes ?? 0}</span>
@@ -4397,17 +4384,18 @@ export default function App() {
                 <div className="mobile-card-head">
                   <div>
                     <strong>{session.label}</strong>
-                    <span>{sessionTypeLabel(session)}</span>
+                    <span>{scheduleTypeLabel(session)}</span>
                   </div>
-                  <span className={`mobile-status-pill ${statusTone(status.behavior)}`}>{status.label}</span>
-                </div>
+                  </div>
+                {attendanceSummary(session)}
                 {memos[session.key] ? <p className="mobile-card-note">{memos[session.key]}</p> : null}
                 <div className="mobile-status-grid">
-                  {statusOptions.map((option) => (
+                  {attendanceOptions(session).map((option) => (
                     <button
                       key={option.id}
                       type="button"
-                      className={status.id === option.id ? 'active' : ''}
+                      aria-pressed={attendance[effectiveTeacher]?.[session.key] === option.id}
+                      className={attendance[effectiveTeacher]?.[session.key] === option.id ? 'active' : ''}
                       disabled={disabled}
                       onClick={() => handleStatusChange(session.key, option.id)}
                     >
@@ -4438,7 +4426,7 @@ export default function App() {
                 <div className="mobile-card-head">
                   <div>
                     <strong>{session.label}</strong>
-                    <span>{sessionTypeLabel(session)}</span>
+                    <span>{scheduleTypeLabel(session)}</span>
                   </div>
                   <span className="mobile-status-pill yes">計{counts.total}名</span>
                 </div>
@@ -4482,30 +4470,25 @@ export default function App() {
   }
 
   function MobileScheduleView() {
+    const nextIndex = schedule.findIndex(session => session.key === nextDateKey)
+    const visibleDays = nextIndex > 0 ? [...schedule.slice(nextIndex), ...schedule.slice(0, nextIndex)] : schedule
     return (
       <section className="mobile-screen">
-        <MobileHeader title="担当表" subtitle="担当なしの先生も状態を表示します" showMonth />
-        <div className="mobile-quick-actions">
-          <button type="button" className="mobile-primary-action" onClick={openScheduleMailPanel}>担当表送信</button>
-          <button type="button" onClick={copyLineText}>LINEコピー</button>
-          <button type="button" onClick={exportHtmlTable}>HTML出力</button>
-        </div>
-        <ScheduleDownloadActions mobile />
-        {exportMessage ? <p className="mobile-export-message" role="status">{exportMessage}</p> : null}
+        {scheduleToolbar(true)}
         <ScheduleMailPanel />
         <div className="mobile-card-list">
-          {schedule.map((session) => (
+          {visibleDays.map((session) => (
             <article key={session.key} className={`mobile-schedule-card ${session.closed ? 'is-disabled' : ''}`}>
               <div className="mobile-card-head">
                 <div>
-                  <strong>{session.label}</strong>
-                  <span>{sessionTypeLabel(session)}</span>
+                  <strong>{session.label}{session.key === nextDateKey ? <small className="next-session">次回</small> : null}</strong>
+                  <span>{scheduleTypeLabel(session)}</span>
                 </div>
-                {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未担当</span> : <span className="mobile-status-pill yes">OK</span>}
+                {!session.social && (session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未担当</span> : <span className="mobile-status-pill yes">OK</span>)}
               </div>
               {session.closed ? (
                 <p className="mobile-card-note">わをん休み</p>
-              ) : (
+              ) : !session.social && (
                 <>
                   <div className="mobile-assignment-list">
                     {Object.entries(session.assignments || {}).map(([className, teacherName]) => (
@@ -4564,17 +4547,17 @@ export default function App() {
           <section className="mobile-card-list">
             <h2>各回設定</h2>
             {sessions.map((session) => {
-              const type = sessionTypesByMonth[monthKey]?.[session.key] ?? 'normal'
+              const type = session.type
               const classes = getSessionClasses(session)
               return (
                 <article key={session.key} className="mobile-admin-card">
                   <div className="mobile-card-head">
-                    <div><strong>{session.label}</strong><span>{sessionTypeLabel(session)}</span></div>
+                    <div><strong>{session.label}</strong><span>{scheduleTypeLabel(session)}</span></div>
                     <select value={type} onChange={(e) => setSessionType(session.key, e.target.value)} disabled={!canEditAdmin}>
                       {sessionTypeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
                   </div>
-                  {!session.closed ? (
+                  {!session.closed && !session.social ? (
                     <>
                       <input value={session.specialNote || ''} placeholder="特別連絡" onChange={(e) => setSessionSpecialNote(session.key, e.target.value)} disabled={!canEditAdmin} />
                       <div className="mobile-class-chip-wrap">
@@ -4644,7 +4627,7 @@ export default function App() {
           <section className="mobile-card-list">
             <h2>アーカイブ</h2>
             <div className="mobile-quick-actions">
-              <button type="button" onClick={finalizeMonth}>今月を確定</button>
+              <button type="button" disabled={isMonthLocked} onClick={finalizeMonth}>今月を確定</button>
               <button type="button" onClick={exportMonthTable}>月表を保存</button>
               <button type="button" onClick={exportHtmlTable}>HTML出力</button>
             </div>
@@ -4730,7 +4713,7 @@ export default function App() {
           {schedule.map((session) => (
             <article key={`memo-${session.key}`} className={`mobile-memo-session-card ${session.closed ? 'is-disabled' : ''}`}>
               <div className="mobile-card-head">
-                <div><strong>{session.label}</strong><span>{sessionTypeLabel(session)}</span></div>
+                <div><strong>{session.label}</strong><span>{scheduleTypeLabel(session)}</span></div>
                 {session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未担当</span> : null}
               </div>
               {!session.closed ? (
@@ -4807,7 +4790,7 @@ export default function App() {
               </button>
             ))}
           </div>
-          {selectedLessonReport ? <span className={`mobile-status-pill ${selectedLessonReport.updatedAt ? 'yes' : 'maybe'}`}>{selectedLessonReport.updatedAt ? '保存済み' : '未入力'}</span> : null}
+          {reportSaveStatus()}
         </section>
         <details className="mobile-lesson-reference">
           <summary>前回の同じクラスを参照</summary>
@@ -4895,7 +4878,7 @@ export default function App() {
       </aside>
 
       <main className="app-main desktop-only">
-        {isMonthLocked && (
+        {isMonthLocked && currentDesktopView !== 'schedule' && (
           <section className="panel lock-banner">
             <div className="lock-banner-inner">
               <p>{year}年{MONTH_JP[month - 1]}の担当表は確定済みです。編集するには管理者がロックを解除してください。</p>
@@ -4907,7 +4890,7 @@ export default function App() {
       </main>
 
       <main className="mobile-app-shell">
-        {isMonthLocked && (
+        {isMonthLocked && currentMobileView !== 'schedule' && (
           <section className="mobile-lock-banner">
             <span>確定済み</span>
             {isAdmin ? <button type="button" onClick={unlockMonth}>解除</button> : null}

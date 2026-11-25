@@ -42,6 +42,7 @@ export const BEHAVIORS = [
 ]
 
 export const sessionTypeOptions = [
+  { value: 'social', label: '交流会' },
   { value: 'normal',  label: '通常' },
   { value: 'meeting', label: '例会' },
   { value: 'holiday', label: 'やすみ' },
@@ -79,6 +80,13 @@ function smartDefault(weekIndex, defaultClasses, allClasses, wangSplit) {
   return [...defaultClasses]
 }
 
+const calendarDefaults = {
+  '2026-12': {
+    '12/19': 'social',
+    '12/26': 'holiday',
+  },
+}
+
 export function generateSessions(year, month, sessionTypesByMonth, sessionClassesByMonth, sessionManualByMonth = {}, sessionSpecialNotesByMonth = {}, defaultClasses, allClasses, specialRules = {}) {
   const { wangSplit = true } = specialRules
   const monthKey = `${year}-${month}`
@@ -89,15 +97,17 @@ export function generateSessions(year, month, sessionTypesByMonth, sessionClasse
 
   return getSaturdaysInMonth(year, month).map((date, index) => {
     const key       = `${month}/${date.getDate()}`
-    const type      = typeMap[key] ?? (month === 4 ? 'meeting' : 'normal')
+    const type      = typeMap[key] ?? calendarDefaults[monthKey]?.[key] ?? (month === 4 ? 'meeting' : 'normal')
     const weekIndex = index + 1
     return {
       key,
       label: key,
       weekIndex,
+      type,
+      social: type === 'social',
       meeting: type === 'meeting',
       closed:  type === 'holiday',
-      requiredClasses: classMap[key] ?? smartDefault(weekIndex, defaultClasses, allClasses, wangSplit),
+      requiredClasses: type === 'social' ? [] : classMap[key] ?? smartDefault(weekIndex, defaultClasses, allClasses, wangSplit),
       classesOverridden: !!classMap[key],
       manualAssignments: manualMap[key] ?? {},
       specialNote: specialNotesMap[key] ?? '',
@@ -276,10 +286,10 @@ export function buildSchedule(attendanceByTeacher, sessions, allTeachers, status
   let previousAssignments = {}
 
   return sessions.map(session => {
-    if (session.closed) {
+    if (session.closed || session.social) {
       return {
         ...session,
-        special: 'わをん休み',
+        special: session.social ? '交流会' : 'わをん休み',
         assignments: {}, classes: [],
         selectedTeachers: [], selectedMaybeTeachers: [],
         meetingOnlyTeachers: [], unassignedClasses: [], notes: [],
