@@ -41,8 +41,10 @@ export const BEHAVIORS = [
   { value: 'meeting_only',  label: '例会のみ参加、担当なし' },
 ]
 
+const eventLabels = { event: 'イベント', social: '交流会' }
+
 export const sessionTypeOptions = [
-  { value: 'social', label: '交流会' },
+  ...Object.entries(eventLabels).map(([value, label]) => ({ value, label })),
   { value: 'normal',  label: '通常' },
   { value: 'meeting', label: '例会' },
   { value: 'holiday', label: 'やすみ' },
@@ -98,16 +100,17 @@ export function generateSessions(year, month, sessionTypesByMonth, sessionClasse
   return getSaturdaysInMonth(year, month).map((date, index) => {
     const key       = `${month}/${date.getDate()}`
     const type      = typeMap[key] ?? calendarDefaults[monthKey]?.[key] ?? (month === 4 ? 'meeting' : 'normal')
+    const eventLabel = Object.hasOwn(eventLabels, type) ? eventLabels[type] : ''
     const weekIndex = index + 1
     return {
       key,
       label: key,
       weekIndex,
       type,
-      social: type === 'social',
+      eventLabel,
       meeting: type === 'meeting',
       closed:  type === 'holiday',
-      requiredClasses: type === 'social' ? [] : classMap[key] ?? smartDefault(weekIndex, defaultClasses, allClasses, wangSplit),
+      requiredClasses: eventLabel ? [] : classMap[key] ?? smartDefault(weekIndex, defaultClasses, allClasses, wangSplit),
       classesOverridden: !!classMap[key],
       manualAssignments: manualMap[key] ?? {},
       specialNote: specialNotesMap[key] ?? '',
@@ -286,10 +289,10 @@ export function buildSchedule(attendanceByTeacher, sessions, allTeachers, status
   let previousAssignments = {}
 
   return sessions.map(session => {
-    if (session.closed || session.social) {
+    if (session.closed || session.eventLabel) {
       return {
         ...session,
-        special: session.social ? '交流会' : 'わをん休み',
+        special: session.eventLabel || 'わをん休み',
         assignments: {}, classes: [],
         selectedTeachers: [], selectedMaybeTeachers: [],
         meetingOnlyTeachers: [], unassignedClasses: [], notes: [],

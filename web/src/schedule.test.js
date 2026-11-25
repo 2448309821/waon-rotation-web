@@ -1,20 +1,34 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { DEFAULT_TEACHERS, buildSchedule, generateSessions, teachersForMonth } from './schedule.js'
+import { DEFAULT_TEACHERS, buildSchedule, generateSessions, sessionTypeOptions, teachersForMonth } from './schedule.js'
+
+test('a generic event stays open without classes and keeps its own label', () => {
+  assert.ok(sessionTypeOptions.some(option => option.value === 'event' && option.label === 'イベント'))
+  const days = generateSessions(2026, 12, {'2026-12': {'12/12': 'event'}},
+    {'2026-12': {'12/12': ['X']}}, {'2026-12': {'12/12': {X: 'A'}}}, {}, ['X'], ['X'])
+  const schedule = buildSchedule({}, days, [{ name: 'A', classes: ['X'], defaultStatus: 'yes' }], yesStatus)
+  const day = schedule.find(session => session.key === '12/12')
+  assert.equal(day.closed, false)
+  assert.deepEqual(day.requiredClasses, [])
+  assert.deepEqual(day.assignments, {})
+  assert.deepEqual(day.unassignedClasses, [])
+  assert.equal(day.special, 'イベント')
+  assert.equal(schedule.find(session => session.key === '12/19').special, '交流会')
+})
 
 test('December year-end event stays open without lessons, even with previous overrides', () => {
   const make = types => generateSessions(2026, 12, types, {}, {'2026-12': {'12/19': {X:'A'}}}, {}, ['X'], ['X'])
   const days = make({})
   const event = buildSchedule({}, days, [{name:'A', classes:['X'], defaultStatus:'yes'}], yesStatus)[2]
-  assert.equal(event.social, true)
+  assert.equal(event.eventLabel, '交流会')
   assert.equal(event.closed, false)
   assert.deepEqual(event.assignments, {})
   assert.deepEqual(event.unassignedClasses, [])
   assert.equal(event.special, '交流会')
   assert.equal(event.specialNote, '')
   assert.equal(days[3].closed, true)
-  assert.equal(make({'2026-12': {'12/19':'normal'}})[2].social, false)
+  assert.equal(make({'2026-12': {'12/19':'normal'}})[2].eventLabel, '')
 })
 
 const yesStatus = [{ id: 'yes', label: '○', behavior: 'yes' }]

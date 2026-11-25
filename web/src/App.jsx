@@ -372,7 +372,7 @@ function scheduleCellText(teacher, session, attendance, statusOptions) {
     .join(' / ')
   if (assigned) return assigned
   if (session.closed) return ''
-  if (session.social && attendance?.[teacher.name]?.[session.key] == null) return '未回答'
+  if (session.eventLabel && attendance?.[teacher.name]?.[session.key] == null) return '未回答'
   if (session.meetingOnlyTeachers?.includes(teacher.name) || session.maybeMeetingTeachers?.includes(teacher.name)) return '会議'
   const statusId = attendance?.[teacher.name]?.[session.key] ?? teacher.defaultStatus ?? 'no'
   const behavior = statusOptions.find((option) => option.id === statusId)?.behavior ?? 'no'
@@ -425,7 +425,7 @@ function buildMarkdownExport(year, month, teachers, sessions, schedule, memos, a
 
 function scheduleTypeLabel(session) {
   if (session.closed) return '休み'
-  if (session.social) return '交流会'
+  if (session.eventLabel) return session.eventLabel
   if (session.meeting) return '例会'
   return '通常'
 }
@@ -489,7 +489,7 @@ ${wordParagraph('＊事務業務はその日の担当者が助け合って行い
 function buildLineText(year, month, schedule, memos) {
   const lines = [`【${year}年${month}月 担当表】`, '']
   for (const session of schedule) {
-    const typeLabel = session.closed ? 'やすみ' : session.social ? '交流会' : session.meeting ? '例会' : ''
+    const typeLabel = session.closed ? 'やすみ' : session.eventLabel || (session.meeting ? '例会' : '')
     lines.push(`◆ ${session.label}${typeLabel ? `（${typeLabel}）` : ''}`)
     if (session.closed) {
       lines.push('わをん休み')
@@ -1986,7 +1986,7 @@ export default function App() {
   }
 
   function getSessionClasses(session) {
-    if (session.social || session.closed) return []
+    if (session.eventLabel || session.closed) return []
     return sessionClassesByMonth[monthKey]?.[session.key] ?? session.requiredClasses
   }
 
@@ -2709,15 +2709,15 @@ export default function App() {
       ? <button onClick={() => setSaveAttempt(n => n + 1)}>再試行</button> : null}</span>
   }
   function attendanceOptions(session) {
-    return session.social ? statusOptions.filter(o => ['yes', 'maybe', 'no'].includes(o.behavior)).map(o => ({ ...o, label: {yes:'参加', maybe:'未定', no:'欠席'}[o.behavior] })) : statusOptions
+    return session.eventLabel ? statusOptions.filter(o => ['yes', 'maybe', 'no'].includes(o.behavior)).map(o => ({ ...o, label: {yes:'参加', maybe:'未定', no:'欠席'}[o.behavior] })) : statusOptions
   }
   function attendanceSummary(session) {
     if (session.closed) return null
     const declared = attendance[effectiveTeacher]?.[session.key]
-    const label = (session.social && declared === 'yes' ? '参加' : statusOptions.find(option => option.id === declared)?.label) || '未入力'
+    const label = (session.eventLabel && declared === 'yes' ? '参加' : statusOptions.find(option => option.id === declared)?.label) || '未入力'
     const lesson = schedule.find(s => s.key === session.key)
     return <div className="day-summary"><span>出席希望：{label}</span>
-      {!session.social && <strong>{(isMonthLocked ? '確定担当：' : '担当案：') + (assignedClassesFor(lesson ?? {}, effectiveTeacher).join(' / ') || 'なし')}</strong>}</div>
+      {!session.eventLabel && <strong>{(isMonthLocked ? '確定担当：' : '担当案：') + (assignedClassesFor(lesson ?? {}, effectiveTeacher).join(' / ') || 'なし')}</strong>}</div>
   }
 
   function UiModeSwitch({ compact = false }) {
@@ -3101,7 +3101,7 @@ export default function App() {
                 <article key={session.key} className={`session-summary-card ${session.closed ? 'is-muted' : session.meeting ? 'is-info' : ''}`}>
                   <div>
                     <strong>{session.label}</strong>
-                    <span>{session.closed ? 'やすみ' : session.social ? '交流会' : session.meeting ? '例会' : `${session.weekIndex}週目${session.weekIndex % 2 === 1 ? ' 王週' : ''}`}</span>
+                    <span>{session.closed ? 'やすみ' : session.eventLabel || (session.meeting ? '例会' : `${session.weekIndex}週目${session.weekIndex % 2 === 1 ? ' 王週' : ''}`)}</span>
                   </div>
                   <div className="summary-kpis">
                     <span>出席 {session.selectedTeachers.length}</span>
@@ -3200,7 +3200,7 @@ export default function App() {
                     <div className="attendance-card-head">
                       <div>
                         <strong>{session.label}</strong>
-                        <span>{session.closed ? 'やすみ' : session.social ? '交流会' : session.meeting ? '例会' : `${session.weekIndex}週目`}</span>
+                        <span>{session.closed ? 'やすみ' : session.eventLabel || (session.meeting ? '例会' : `${session.weekIndex}週目`)}</span>
                       </div>
                     </div>
                     {attendanceSummary(session)}
@@ -3358,7 +3358,7 @@ export default function App() {
                         content = assigned
                       } else if (atMeeting) {
                         content = <span className="table-pill info">会議</span>
-                      } else if (session.social && attendance[teacher.name]?.[session.key] == null) {
+                      } else if (session.eventLabel && attendance[teacher.name]?.[session.key] == null) {
                         content = '未回答'
                       } else if (!session.closed) {
                         const statusId = getEffectiveStatus(teacher.name, session.key)
@@ -3467,7 +3467,7 @@ export default function App() {
                         <span>学習者 {counts.studentTotal} ＋ ボランティア {counts.volunteer} ＝ <strong>{counts.total}人</strong></span>
                       </div>
                     )}
-                    {!session.closed && !session.social && (
+                    {!session.closed && !session.eventLabel && (
                       <>
                         <div className="session-special-note-row">
                           <span className="session-special-note-label">特別連絡</span>
@@ -4337,7 +4337,7 @@ export default function App() {
           <h2>今月の回</h2>
           {schedule.map((session) => {
             const counts = monthTeachers.reduce((acc, teacher) => {
-              if (session.social && attendance[teacher.name]?.[session.key] == null) return acc
+              if (session.eventLabel && attendance[teacher.name]?.[session.key] == null) return acc
               const tone = statusTone(getStatusInfo(teacher.name, session.key).behavior)
               acc[tone] = (acc[tone] ?? 0) + 1
               return acc
@@ -4484,11 +4484,11 @@ export default function App() {
                   <strong>{session.label}{session.key === nextDateKey ? <small className="next-session">次回</small> : null}</strong>
                   <span>{scheduleTypeLabel(session)}</span>
                 </div>
-                {!session.social && (session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未担当</span> : <span className="mobile-status-pill yes">OK</span>)}
+                {!session.eventLabel && (session.unassignedClasses?.length > 0 ? <span className="mobile-status-pill maybe">未担当</span> : <span className="mobile-status-pill yes">OK</span>)}
               </div>
               {session.closed ? (
                 <p className="mobile-card-note">わをん休み</p>
-              ) : !session.social && (
+              ) : !session.eventLabel && (
                 <>
                   <div className="mobile-assignment-list">
                     {Object.entries(session.assignments || {}).map(([className, teacherName]) => (
@@ -4557,7 +4557,7 @@ export default function App() {
                       {sessionTypeOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
                   </div>
-                  {!session.closed && !session.social ? (
+                  {!session.closed && !session.eventLabel ? (
                     <>
                       <input value={session.specialNote || ''} placeholder="特別連絡" onChange={(e) => setSessionSpecialNote(session.key, e.target.value)} disabled={!canEditAdmin} />
                       <div className="mobile-class-chip-wrap">
