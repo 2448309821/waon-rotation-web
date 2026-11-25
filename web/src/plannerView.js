@@ -17,3 +17,8 @@ export function reportSyncLabel(hasReport, status, acknowledged) {
   if (status === 'saving') return '保存中'
   return status === 'ready' && acknowledged ? '保存済み' : '未同期'
 }
+
+export function rosterAttendanceBehavior(options, declared, fallback, isEvent) {
+  if (isEvent && declared == null) return 'no'
+  return options.find(option => option.id === (declared ?? fallback ?? 'no'))?.behavior ?? 'no'
+}

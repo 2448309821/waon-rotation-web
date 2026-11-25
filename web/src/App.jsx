@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import MonthPager from './MonthPager'
-import { readMonth, reportSyncLabel } from './plannerView'
+import { readMonth, reportSyncLabel, rosterAttendanceBehavior } from './plannerView'
 import '@fontsource/noto-sans-jp/400.css'
 import '@fontsource/noto-sans-jp/700.css'
 import waonIcon1 from './assets/brand-icons/waon-icon-1.webp'
@@ -372,10 +372,8 @@ function scheduleCellText(teacher, session, attendance, statusOptions) {
     .join(' / ')
   if (assigned) return assigned
   if (session.closed) return ''
-  if (session.eventLabel && attendance?.[teacher.name]?.[session.key] == null) return '未回答'
   if (session.meetingOnlyTeachers?.includes(teacher.name) || session.maybeMeetingTeachers?.includes(teacher.name)) return '会議'
-  const statusId = attendance?.[teacher.name]?.[session.key] ?? teacher.defaultStatus ?? 'no'
-  const behavior = statusOptions.find((option) => option.id === statusId)?.behavior ?? 'no'
+  const behavior = rosterAttendanceBehavior(statusOptions, attendance?.[teacher.name]?.[session.key], teacher.defaultStatus, session.eventLabel)
   if (behavior === 'yes') return '○'
   if (behavior === 'maybe' || behavior === 'maybe_meeting') return '△'
   return '×'
@@ -3358,12 +3356,8 @@ export default function App() {
                         content = assigned
                       } else if (atMeeting) {
                         content = <span className="table-pill info">会議</span>
-                      } else if (session.eventLabel && attendance[teacher.name]?.[session.key] == null) {
-                        content = '未回答'
                       } else if (!session.closed) {
-                        const statusId = getEffectiveStatus(teacher.name, session.key)
-                        const statusOpt = statusOptions.find(o => o.id === statusId)
-                        const behavior = statusOpt?.behavior ?? 'no'
+                        const behavior = rosterAttendanceBehavior(statusOptions, attendance[teacher.name]?.[session.key], teacher.defaultStatus, session.eventLabel)
                         if (behavior === 'yes') {
                           content = '○'
                           cellClass += ' td-status td-status-yes'
@@ -4337,8 +4331,7 @@ export default function App() {
           <h2>今月の回</h2>
           {schedule.map((session) => {
             const counts = monthTeachers.reduce((acc, teacher) => {
-              if (session.eventLabel && attendance[teacher.name]?.[session.key] == null) return acc
-              const tone = statusTone(getStatusInfo(teacher.name, session.key).behavior)
+              const tone = statusTone(rosterAttendanceBehavior(statusOptions, attendance[teacher.name]?.[session.key], teacher.defaultStatus, session.eventLabel))
               acc[tone] = (acc[tone] ?? 0) + 1
               return acc
             }, {})

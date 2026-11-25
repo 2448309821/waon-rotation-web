@@ -1,6 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readMonth, stepMonth, reportSyncLabel } from './plannerView.js'
+import { readMonth, stepMonth, reportSyncLabel, rosterAttendanceBehavior } from './plannerView.js'
+
+test('an unanswered event is counted as absent even with a present default', () => {
+  const options = [{ id: 'yes', behavior: 'yes' }, { id: 'maybe', behavior: 'maybe' }]
+  assert.equal(rosterAttendanceBehavior(options, undefined, 'yes', true), 'no')
+  assert.equal(rosterAttendanceBehavior(options, 'yes', 'no', true), 'yes')
+  assert.equal(rosterAttendanceBehavior(options, 'maybe', 'no', true), 'maybe')
+  assert.equal(rosterAttendanceBehavior(options, undefined, 'yes', false), 'yes')
+})
 
 test('month navigation stays in range and crosses years in both directions', () => {
   assert.deepEqual(stepMonth(2026, 12, 1), { year: 2027, month: 1 })
